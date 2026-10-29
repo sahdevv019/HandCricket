@@ -379,11 +379,330 @@
       .mode-btn.disabled {
         opacity: 0.78; cursor: pointer;
       }
+
+      /* ═══════════════════════════════════════════════════════════════
+         ADVANCED 2D ANIMATIONS & VISUAL POLISH
+         ═══════════════════════════════════════════════════════════════ */
+
+      /* ── Screen Transitions ── */
+      .panel:not(.hidden), .mode-selection:not(.hidden), .toss-screen:not(.hidden), .avatar-modal, .game-screen.active {
+        animation: screenFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes screenFadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ── Screen Shakes ── */
+      .shake-subtle {
+        animation: shakeSubtle 0.32s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+      }
+      @keyframes shakeSubtle {
+        10%, 90% { transform: translate3d(-1.5px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
+        40%, 60% { transform: translate3d(3px, 0, 0); }
+      }
+
+      .shake-impact {
+        animation: shakeImpact 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+      }
+      @keyframes shakeImpact {
+        10%, 90% { transform: translate3d(-3px, 2px, 0); }
+        20%, 80% { transform: translate3d(4px, -2px, 0); }
+        30%, 50%, 70% { transform: translate3d(-6px, 3px, 0); }
+        40%, 60% { transform: translate3d(6px, -3px, 0); }
+      }
+
+      /* ── Button Interactions & Locked State ── */
+      .choice-btn {
+        transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+        position: relative;
+      }
+      .choice-btn:active:not(:disabled) {
+        transform: scale(0.92);
+      }
+      .choice-btn.selected {
+        border-color: #38ef7d !important;
+        background: linear-gradient(135deg, #667eea, #764ba2) !important;
+        color: white !important;
+        transform: scale(1.12);
+        box-shadow: 0 0 24px rgba(56, 239, 125, 0.65), 0 8px 24px rgba(0,0,0,0.22);
+      }
+      .choice-btn.locked {
+        animation: lockedGlow 1.2s ease-in-out infinite;
+      }
+      .choice-btn.locked::after {
+        content: "Locked";
+        position: absolute;
+        bottom: 9px;
+        font-size: 0.65em;
+        color: #38ef7d;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+      }
+      @keyframes lockedGlow {
+        0%, 100% { box-shadow: 0 0 16px rgba(56, 239, 125, 0.55); }
+        50%      { box-shadow: 0 0 28px rgba(56, 239, 125, 0.9), 0 0 14px rgba(102, 126, 234, 0.7); }
+      }
+
+      /* ── Ball Resolution Reveal ── */
+      .batter-choice.anim-in {
+        animation: batterChoiceIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes batterChoiceIn {
+        0%   { opacity: 0; transform: translateX(-40px) scale(0.6); }
+        70%  { transform: translateX(6px) scale(1.18); }
+        100% { opacity: 1; transform: translateX(0) scale(1); }
+      }
+
+      .bowler-choice.anim-in {
+        animation: bowlerChoiceIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes bowlerChoiceIn {
+        0%   { opacity: 0; transform: translateX(40px) scale(0.6); }
+        70%  { transform: translateX(-6px) scale(1.18); }
+        100% { opacity: 1; transform: translateX(0) scale(1); }
+      }
+
+      .score-card.score-pop {
+        animation: scorePop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes scorePop {
+        0%   { transform: scale(1); }
+        50%  { transform: scale(1.08); border-color: #38ef7d; }
+        100% { transform: scale(1.05); }
+      }
+
+      /* ── Celebration Overlay & Banners ── */
+      .celebration-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 9990;
+      }
+      .celebration-banner {
+        padding: 22px 42px;
+        border-radius: 24px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+        animation: bannerPop 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        pointer-events: none;
+        max-width: 90vw;
+      }
+      .banner-title {
+        font-size: 2.2em;
+        font-weight: 900;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin: 0;
+        line-height: 1.15;
+        text-shadow: 0 3px 12px rgba(0,0,0,0.3);
+      }
+      .banner-sub {
+        font-size: 1.05em;
+        font-weight: 700;
+        margin-top: 8px;
+        opacity: 0.95;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      }
+      .celebration-four {
+        background: linear-gradient(135deg, #11998e, #38ef7d);
+        color: white;
+        border: 3px solid rgba(255,255,255,0.85);
+        box-shadow: 0 0 45px rgba(56, 239, 125, 0.65), 0 16px 40px rgba(0,0,0,0.3);
+      }
+      .celebration-six {
+        background: linear-gradient(135deg, #f7971e, #ffd200);
+        color: #3b1e00;
+        border: 3px solid #ffffff;
+        box-shadow: 0 0 55px rgba(255, 210, 0, 0.8), 0 16px 40px rgba(0,0,0,0.35);
+      }
+      .celebration-out {
+        background: linear-gradient(135deg, #e52d27, #b31217);
+        color: white;
+        border: 3px solid rgba(255,255,255,0.9);
+        box-shadow: 0 0 50px rgba(229, 45, 39, 0.75), 0 16px 40px rgba(0,0,0,0.35);
+      }
+      .celebration-innings {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        border: 3px solid rgba(255,255,255,0.9);
+        box-shadow: 0 0 50px rgba(102, 126, 234, 0.75), 0 16px 40px rgba(0,0,0,0.35);
+      }
+      @keyframes bannerPop {
+        0%   { opacity: 0; transform: scale(0.4) translateY(24px); }
+        22%  { opacity: 1; transform: scale(1.1) translateY(-4px); }
+        38%  { transform: scale(1) translateY(0); }
+        78%  { opacity: 1; transform: scale(1) translateY(0); }
+        100% { opacity: 0; transform: scale(0.92) translateY(-24px); }
+      }
+
+      /* ── 3D Coin Styling & Animation ── */
+      .coin-stage {
+        perspective: 800px;
+        display: inline-block;
+        margin-bottom: 24px;
+      }
+      .coin-3d {
+        width: 94px;
+        height: 94px;
+        position: relative;
+        transform-style: preserve-3d;
+        transition: transform 1.5s cubic-bezier(0.15, 0.9, 0.25, 1);
+        margin: 0 auto;
+      }
+      .coin-face {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.8em;
+        backface-visibility: hidden;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25), inset 0 0 12px rgba(255,255,255,0.45);
+        border: 4px solid #ffd700;
+        user-select: none;
+      }
+      .coin-front {
+        background: radial-gradient(circle at 35% 35%, #ffe57f, #ffb300);
+      }
+      .coin-back {
+        background: radial-gradient(circle at 35% 35%, #ffd54f, #ff8f00);
+        transform: rotateY(180deg);
+      }
+      .coin-3d.flipping {
+        animation: coin3dFlip 1.5s cubic-bezier(0.15, 0.9, 0.25, 1) forwards;
+      }
+      @keyframes coin3dFlip {
+        0%   { transform: rotateY(0deg) translateY(0); }
+        50%  { transform: rotateY(900deg) translateY(-45px) scale(1.15); }
+        100% { transform: rotateY(1800deg) translateY(0) scale(1); }
+      }
+      .coin-3d.flip-to-heads {
+        transform: rotateY(1440deg) !important;
+      }
+      .coin-3d.flip-to-tails {
+        transform: rotateY(1620deg) !important;
+      }
+
+      /* ── Match Results Polish ── */
+      .trophy-badge {
+        font-size: 4em;
+        display: block;
+        margin: 0 auto 10px;
+        animation: trophyBounce 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes trophyBounce {
+        0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+        60%  { transform: scale(1.25) rotate(10deg); opacity: 1; }
+        80%  { transform: scale(0.95) rotate(-4deg); }
+        100% { transform: scale(1) rotate(0deg); opacity: 1; }
+      }
+
+      /* ── Matchmaking Polish ── */
+      .radar-sweep {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        background: conic-gradient(from 0deg, rgba(56,239,125,0.35) 0deg, rgba(56,239,125,0) 60deg, transparent 360deg);
+        animation: radarSpin 2s linear infinite;
+        pointer-events: none;
+      }
+      @keyframes radarSpin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+      .match-found-badge {
+        display: inline-block;
+        padding: 6px 18px;
+        border-radius: 999px;
+        background: rgba(56, 239, 125, 0.18);
+        border: 2px solid #38ef7d;
+        color: #38ef7d;
+        font-weight: 900;
+        letter-spacing: 1px;
+        animation: matchFoundPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes matchFoundPop {
+        0%   { transform: scale(0.6); opacity: 0; }
+        70%  { transform: scale(1.15); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      #matchFoundCountdown {
+        display: inline-block;
+        animation: countPulse 1s ease-in-out infinite;
+      }
+      @keyframes countPulse {
+        0%   { transform: scale(1.35); color: #38ef7d; }
+        50%  { transform: scale(1); color: #ffd166; }
+        100% { transform: scale(1.35); color: #38ef7d; }
+      }
+
+      /* ── Rematch Modal Polish ── */
+      .avatar-modal {
+        animation: modalPopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes modalPopIn {
+        from { transform: scale(0.85); opacity: 0; }
+        to   { transform: scale(1); opacity: 1; }
+      }
+      .rematch-status {
+        animation: rematchGlow 1.6s ease-in-out infinite;
+      }
+      @keyframes rematchGlow {
+        0%, 100% { box-shadow: 0 0 8px rgba(255, 204, 0, 0.2); }
+        50%      { box-shadow: 0 0 20px rgba(255, 204, 0, 0.55); }
+      }
+
+      /* ── Accessibility: Reduced Motion (Case-by-case overrides per guidance) ── */
+      @media (prefers-reduced-motion: reduce) {
+        .shake-subtle, .shake-impact {
+          animation: none !important;
+          transform: none !important;
+        }
+        .celebration-banner {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .radar-sweep {
+          animation: none !important;
+          display: none !important;
+        }
+        .coin-3d {
+          transition: transform 0.2s ease !important;
+        }
+        .coin-3d.flipping {
+          animation: none !important;
+        }
+        .trophy-badge {
+          animation: none !important;
+          transform: none !important;
+        }
+        #matchFoundCountdown {
+          animation: none !important;
+        }
+        .panel:not(.hidden), .mode-selection:not(.hidden), .toss-screen:not(.hidden), .avatar-modal, .game-screen.active {
+          animation: none !important;
+        }
+      }
     </style>
   </head>
   <body>
     <button class="dark-toggle" id="darkToggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
     <canvas id="confettiCanvas"></canvas>
+    <div id="celebrationOverlay" class="celebration-overlay hidden">
+      <div id="celebrationBanner" class="celebration-banner">
+        <h2 id="celebrationTitle" class="banner-title">BOUNDARY 4!</h2>
+        <div id="celebrationSubtitle" class="banner-sub">Cracking shot!</div>
+      </div>
+    </div>
     <div class="pause-overlay" id="pauseOverlay" aria-hidden="true"><div class="pause-card"><h2>⏸️ Game Paused</h2><p>Your game is safely paused.</p><div class="pause-actions"><button class="btn btn-primary" onclick="resumeGame()">▶ Resume</button><button class="btn btn-secondary" onclick="quitPausedGame()">Back to Menu</button></div></div></div>
     <div class="container">
 
@@ -550,6 +869,9 @@
         <div id="matchmakingSearchingState" class="matchmaking-box">
           <div class="matchmaking-spinner">
             <div class="pulse-ring"></div>
+            <div class="pulse-ring" style="animation-delay: 0.6s;"></div>
+            <div class="pulse-ring" style="animation-delay: 1.2s;"></div>
+            <div class="radar-sweep"></div>
             <div class="matchmaking-icon">🏏</div>
           </div>
           <h3 id="matchmakingTitle" style="margin:16px 0 6px;color:#667eea;font-size:1.3em;">Searching for Opponent...</h3>
@@ -567,7 +889,7 @@
 
         <div id="matchmakingFoundState" class="matchmaking-box hidden">
           <div style="font-size:2.8em;margin-bottom:6px;">⚔️</div>
-          <h3 style="color:#38ef7d;font-size:1.4em;margin-bottom:12px;">Match Found!</h3>
+          <div class="match-found-badge">MATCH FOUND!</div>
           <div class="match-found-players" style="display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0;">
             <div class="player-pill">
               <div class="pill-avatar" id="matchFoundP1Avatar">👤</div>
@@ -647,7 +969,12 @@
       <div id="tossScreen" class="toss-screen hidden">
         <div class="screen-toolbar"><h2>🪙 Coin Toss</h2><button class="btn btn-secondary" onclick="backToMode()">← Back</button></div>
         <p id="tossSubtitle">Flipping…</p>
-        <div class="coin" id="coin">🪙</div>
+        <div class="coin-stage">
+          <div class="coin-3d" id="coin">
+            <div class="coin-face coin-front">🙂</div>
+            <div class="coin-face coin-back">🌗</div>
+          </div>
+        </div>
         <div class="toss-result" id="tossResult"></div>
         <div class="toss-choice-btns hidden" id="tossCallBtns">
           <button class="toss-btn" onclick="onlineTossCall('heads')">🙂 Heads</button>
@@ -725,6 +1052,7 @@
           </div>
         </div>
         <div class="game-over" id="gameOver">
+          <div class="trophy-badge hidden" id="trophyBadge">🏆</div>
           <h2 id="gameOverTitle">Game Over!</h2>
           <p class="final-score" id="gameOverMessage"></p>
           <div class="rank-up hidden" id="rankUpMsg"></div>
@@ -802,7 +1130,11 @@
     // ═══════════════════════════════════════════════════════════════
     const AC = window.AudioContext || window.webkitAudioContext;
     let _ctx = null;
-    function getCtx() { if (!_ctx) _ctx = new AC(); return _ctx; }
+    function getCtx() {
+      if (!_ctx && AC) _ctx = new AC();
+      if (_ctx && _ctx.state === 'suspended') _ctx.resume().catch(() => {});
+      return _ctx;
+    }
     function playTone(freq, type, dur, vol=0.28, t0=0) {
       try {
         const ac = getCtx(), t = ac.currentTime + t0;
@@ -816,13 +1148,301 @@
     const SFX = {
       click()   { playTone(440,'sine',0.07,0.18); },
       runs(n)   { playTone(300+n*40,'triangle',0.14,0.28); },
-      out()     { playTone(200,'sawtooth',0.1,0.28); playTone(150,'sawtooth',0.18,0.28,0.1); },
-      six()     { [500,620,740,880].forEach((f,i)=>playTone(f,'sine',0.11,0.28,i*.055)); },
+      four()    { [440, 554, 659].forEach((f,i)=>playTone(f,'sine',0.12,0.28,i*.06)); },
+      out()     { playTone(200,'sawtooth',0.12,0.32); playTone(150,'sawtooth',0.2,0.32,0.08); },
+      six()     { [500,620,740,880,1046].forEach((f,i)=>playTone(f,'sine',0.13,0.3,i*.055)); },
       win()     { [523,659,784,1047].forEach((f,i)=>playTone(f,'sine',0.22,0.32,i*.11)); },
       lose()    { [400,340,290,240].forEach((f,i)=>playTone(f,'triangle',0.18,0.28,i*.09)); },
       coin()    { playTone(880,'sine',0.06,0.22); playTone(1100,'sine',0.05,0.18,0.08); playTone(880,'sine',0.09,0.18,0.16); },
       achieve() { [600,800,1000].forEach((f,i)=>playTone(f,'sine',0.14,0.28,i*.09)); },
     };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  CANVAS 2D PARTICLE ENGINE & CELEBRATIONS
+    // ═══════════════════════════════════════════════════════════════
+    const ParticleFX = {
+      canvas: null,
+      ctx: null,
+      particles: [],
+      animId: null,
+      active: false,
+
+      init() {
+        this.canvas = document.getElementById('confettiCanvas');
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.resize();
+      },
+
+      resize() {
+        if (!this.canvas) return;
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+      },
+
+      isReducedMotion() {
+        return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      },
+
+      clear() {
+        this.particles = [];
+        if (this.animId) {
+          cancelAnimationFrame(this.animId);
+          this.animId = null;
+        }
+        this.active = false;
+        if (this.ctx && this.canvas) {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+      },
+
+      stop() {
+        if (this.animId) {
+          cancelAnimationFrame(this.animId);
+          this.animId = null;
+        }
+        this.active = false;
+        if (this.ctx && this.canvas) {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+      },
+
+      confetti() {
+        if (this.isReducedMotion()) return;
+        this.init();
+        if (!this.canvas || !this.ctx) return;
+        const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#38ef7d', '#ffd700', '#00e5ff'];
+        for (let i = 0; i < 120; i++) {
+          this.particles.push({
+            type: 'confetti',
+            x: Math.random() * this.canvas.width,
+            y: -20 - Math.random() * (this.canvas.height * 0.4),
+            w: 6 + Math.random() * 6,
+            h: 8 + Math.random() * 8,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            vx: -2 + Math.random() * 4,
+            vy: 2.5 + Math.random() * 3.5,
+            rot: Math.random() * 360,
+            vr: -5 + Math.random() * 10
+          });
+        }
+        this.start();
+      },
+
+      fourBurst() {
+        if (this.isReducedMotion()) return;
+        this.init();
+        if (!this.canvas || !this.ctx) return;
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const colors = ['#11998e', '#38ef7d', '#00f2fe', '#4facfe', '#ffffff'];
+        for (let i = 0; i < 55; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 4 + Math.random() * 7;
+          this.particles.push({
+            type: 'spark',
+            x: cx,
+            y: cy,
+            size: 3 + Math.random() * 5,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            decay: 0.024 + Math.random() * 0.015,
+            alpha: 1
+          });
+        }
+        this.start();
+      },
+
+      sixExplosion() {
+        if (this.isReducedMotion()) return;
+        this.init();
+        if (!this.canvas || !this.ctx) return;
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const colors = ['#ffd700', '#ffa700', '#ff5722', '#fff176', '#ffffff'];
+        for (let i = 0; i < 80; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 5 + Math.random() * 9;
+          this.particles.push({
+            type: 'spark',
+            x: cx,
+            y: cy,
+            size: 4 + Math.random() * 6,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            decay: 0.02 + Math.random() * 0.012,
+            alpha: 1
+          });
+        }
+        this.start();
+      },
+
+      outShockwave() {
+        if (this.isReducedMotion()) return;
+        this.init();
+        if (!this.canvas || !this.ctx) return;
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        this.particles.push({
+          type: 'ring',
+          x: cx,
+          y: cy,
+          radius: 10,
+          maxRadius: Math.min(cx, cy) * 0.75,
+          growth: 16,
+          lineWidth: 5,
+          color: '#f44336',
+          alpha: 1,
+          decay: 0.038
+        });
+        for (let i = 0; i < 35; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 3 + Math.random() * 6;
+          this.particles.push({
+            type: 'spark',
+            x: cx,
+            y: cy,
+            size: 3 + Math.random() * 4,
+            color: Math.random() > 0.4 ? '#f44336' : '#ffffff',
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            decay: 0.028 + Math.random() * 0.02,
+            alpha: 1
+          });
+        }
+        this.start();
+      },
+
+      start() {
+        if (this.active) return;
+        this.active = true;
+        let frames = 0;
+        const loop = () => {
+          if (!this.active || this.particles.length === 0) {
+            this.clear();
+            return;
+          }
+          frames++;
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+          for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            if (p.type === 'confetti') {
+              p.x += p.vx;
+              p.y += p.vy;
+              p.rot += p.vr;
+              if (p.y > this.canvas.height + 20) {
+                this.particles.splice(i, 1);
+                continue;
+              }
+              this.ctx.save();
+              this.ctx.translate(p.x, p.y);
+              this.ctx.rotate((p.rot * Math.PI) / 180);
+              this.ctx.fillStyle = p.color;
+              this.ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+              this.ctx.restore();
+            } else if (p.type === 'spark') {
+              p.x += p.vx;
+              p.y += p.vy;
+              p.vx *= 0.96;
+              p.vy *= 0.96;
+              p.alpha -= p.decay;
+              if (p.alpha <= 0) {
+                this.particles.splice(i, 1);
+                continue;
+              }
+              this.ctx.save();
+              this.ctx.globalAlpha = Math.max(0, p.alpha);
+              this.ctx.fillStyle = p.color;
+              this.ctx.beginPath();
+              this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+              this.ctx.fill();
+              this.ctx.restore();
+            } else if (p.type === 'ring') {
+              p.radius += p.growth;
+              p.alpha -= p.decay;
+              if (p.alpha <= 0 || p.radius >= p.maxRadius) {
+                this.particles.splice(i, 1);
+                continue;
+              }
+              this.ctx.save();
+              this.ctx.globalAlpha = Math.max(0, p.alpha);
+              this.ctx.strokeStyle = p.color;
+              this.ctx.lineWidth = p.lineWidth;
+              this.ctx.beginPath();
+              this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+              this.ctx.stroke();
+              this.ctx.restore();
+            }
+          }
+
+          if (frames > 360) {
+            this.clear();
+            return;
+          }
+
+          this.animId = requestAnimationFrame(loop);
+        };
+        this.animId = requestAnimationFrame(loop);
+      }
+    };
+
+    window.addEventListener('resize', () => ParticleFX.resize());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) ParticleFX.stop();
+    });
+
+    function showCelebration(type, title, subtitle, duration = 1200) {
+      const overlay = document.getElementById('celebrationOverlay');
+      if (!overlay) return;
+      const banner = document.getElementById('celebrationBanner');
+      const titleEl = document.getElementById('celebrationTitle');
+      const subEl = document.getElementById('celebrationSubtitle');
+      if (!banner || !titleEl || !subEl) return;
+
+      banner.className = 'celebration-banner celebration-' + type;
+      titleEl.textContent = title;
+      subEl.textContent = subtitle || '';
+      overlay.classList.remove('hidden');
+
+      const gameArea = document.querySelector('.game-area');
+      if (type === 'four') {
+        SFX.four();
+        ParticleFX.fourBurst();
+      } else if (type === 'six') {
+        SFX.six();
+        ParticleFX.sixExplosion();
+        if (gameArea) {
+          gameArea.classList.remove('shake-subtle');
+          void gameArea.offsetWidth;
+          gameArea.classList.add('shake-subtle');
+        }
+      } else if (type === 'out') {
+        SFX.out();
+        ParticleFX.outShockwave();
+        if (gameArea) {
+          gameArea.classList.remove('shake-impact');
+          void gameArea.offsetWidth;
+          gameArea.classList.add('shake-impact');
+        }
+      }
+
+      const thisGen = currentMatchGeneration;
+      setTimeout(() => {
+        if (thisGen === currentMatchGeneration && overlay) {
+          overlay.classList.add('hidden');
+          if (gameArea) {
+            gameArea.classList.remove('shake-subtle', 'shake-impact');
+          }
+        }
+      }, duration);
+    }
+
+    function launchConfetti() {
+      ParticleFX.confetti();
+    }
 
     // ═══════════════════════════════════════════════════════════════
     //  ACHIEVEMENTS DEFINITION
@@ -1720,14 +2340,20 @@
       document.querySelectorAll('.toss-extra').forEach(e=>e.remove());
 
       const coin = document.getElementById('coin');
-      coin.classList.remove('flipping'); void coin.offsetWidth; coin.classList.add('flipping');
+      const isHeads = Math.random() < 0.5;
+      if (coin) {
+        coin.classList.remove('flip-to-heads', 'flip-to-tails', 'flipping');
+        void coin.offsetWidth;
+        coin.classList.add('flipping');
+        coin.classList.add(isHeads ? 'flip-to-heads' : 'flip-to-tails');
+      }
       SFX.coin();
 
       const tossGen = currentMatchGeneration;
       setTimeout(()=>{
         if (tossGen !== currentMatchGeneration) return;
-        coin.classList.remove('flipping');
-        const win = Math.random() < 0.5;
+        if (coin) coin.classList.remove('flipping');
+        const win = isHeads;
         const oppLabel = mode==='computer' ? 'Computer' : (opponentName||'Opponent');
         document.getElementById('tossResult').textContent = win ? '🎉 You won the toss!' : `😮 ${oppLabel} won the toss!`;
         if (win) {
@@ -1815,14 +2441,21 @@
       if (rModal) rModal.classList.add('hidden');
       const pAgainBtn = document.getElementById('playAgainBtn');
       if (pAgainBtn) { pAgainBtn.disabled = false; pAgainBtn.textContent = 'Play Again'; }
+      const tb = document.getElementById('trophyBadge');
+      if (tb) tb.classList.add('hidden');
+      document.getElementById('celebrationOverlay')?.classList.add('hidden');
+      document.querySelector('.game-area')?.classList.remove('shake-subtle', 'shake-impact');
+      document.getElementById('player1Card')?.classList.remove('score-pop');
+      document.getElementById('player2Card')?.classList.remove('score-pop');
+      if (typeof ParticleFX !== 'undefined') ParticleFX.clear();
 
       // Clear HUD and result banners
       const rr = document.getElementById('roundResult');
       if (rr) { rr.textContent = ''; rr.className = 'round-result'; }
       const bc = document.getElementById('batterChoice');
-      if (bc) bc.textContent = '-';
+      if (bc) { bc.textContent = '-'; bc.classList.remove('anim-in'); }
       const bw = document.getElementById('bowlerChoice');
-      if (bw) bw.textContent = '-';
+      if (bw) { bw.textContent = '-'; bw.classList.remove('anim-in'); }
       const ai = document.getElementById('actionInfo');
       if (ai) ai.textContent = '';
       const si = document.getElementById('statusInfo');
@@ -1835,7 +2468,7 @@
       if (p2ScoreEl) p2ScoreEl.textContent = '0';
 
       document.querySelectorAll('.choice-btn').forEach(b => {
-        b.classList.remove('selected');
+        b.classList.remove('selected', 'locked');
         b.disabled = false;
       });
 
@@ -2192,7 +2825,8 @@
       resetMenuScroll();
       document.querySelectorAll('.toss-extra').forEach(e=>e.remove());
       document.getElementById('tossResult').textContent='';
-      document.getElementById('coin').classList.remove('flipping');
+      const coin = document.getElementById('coin');
+      if (coin) coin.classList.remove('flip-to-heads', 'flip-to-tails', 'flipping');
       document.getElementById('tossChoiceBtns').classList.add('hidden');
       document.getElementById('tossCallBtns').classList.add('hidden');
       const amICaller = onlineIsHost ? callerIsHost : !callerIsHost;
@@ -2220,11 +2854,16 @@
     }
     function onlinePlayTossAnimation(result, winnerIsHost){
       document.getElementById('tossSubtitle').textContent='Flipping the coin…';
-      const coin=document.getElementById('coin');
-      coin.classList.remove('flipping'); void coin.offsetWidth; coin.classList.add('flipping');
+      const coin = document.getElementById('coin');
+      if (coin) {
+        coin.classList.remove('flip-to-heads', 'flip-to-tails', 'flipping');
+        void coin.offsetWidth;
+        coin.classList.add('flipping');
+        coin.classList.add(result === 'heads' ? 'flip-to-heads' : 'flip-to-tails');
+      }
       SFX.coin();
       setTimeout(()=>{
-        coin.classList.remove('flipping');
+        if (coin) coin.classList.remove('flipping');
         const amIWinner = onlineIsHost ? winnerIsHost : !winnerIsHost;
         document.getElementById('tossResult').textContent = `${result==='heads'?'🙂 Heads':'🌗 Tails'} — ${amIWinner ? 'You won the toss! 🎉' : `${opponentName||'Your opponent'} won the toss.`}`;
         if(amIWinner){
@@ -2268,7 +2907,29 @@
       updateUI();
       onlineResetBall();
     }
-    function onlineResetBall(){ stopTimer(); onlineChoices={p1:null,p2:null}; lastBatterChoice=null; lastBowlerChoice=null; document.getElementById('batterChoice').textContent='-'; document.getElementById('bowlerChoice').textContent='-'; document.getElementById('roundResult').textContent=''; document.querySelectorAll('.choice-btn').forEach(b=>{b.classList.remove('selected');b.disabled=false;}); const oppWord=gameMode==='ranked'?'opponent':'friend'; document.getElementById('actionInfo').textContent=isBatter1Batting?(onlineIsHost?`You bat + bowl choice when your ${oppWord} is ready.`:`Your ${oppWord} bats; choose your bowl.`):(onlineIsHost?`Your ${oppWord} bats; choose your bowl.`:`You bat + bowl choice when your ${oppWord} is ready.`); updateUI(); if(!isInningsDone&&!gameOverDisplayed) startTimer(); }
+    function onlineResetBall(){
+      stopTimer();
+      onlineChoices={p1:null,p2:null};
+      lastBatterChoice=null;
+      lastBowlerChoice=null;
+      document.getElementById('celebrationOverlay')?.classList.add('hidden');
+      document.querySelector('.game-area')?.classList.remove('shake-subtle', 'shake-impact');
+      const bc = document.getElementById('batterChoice');
+      if (bc) { bc.textContent='-'; bc.classList.remove('anim-in'); }
+      const bw = document.getElementById('bowlerChoice');
+      if (bw) { bw.textContent='-'; bw.classList.remove('anim-in'); }
+      document.getElementById('player1Card')?.classList.remove('score-pop');
+      document.getElementById('player2Card')?.classList.remove('score-pop');
+      document.getElementById('roundResult').textContent='';
+      document.querySelectorAll('.choice-btn').forEach(b=>{
+        b.classList.remove('selected', 'locked');
+        b.disabled=false;
+      });
+      const oppWord=gameMode==='ranked'?'opponent':'friend';
+      document.getElementById('actionInfo').textContent=isBatter1Batting?(onlineIsHost?`You bat + bowl choice when your ${oppWord} is ready.`:`Your ${oppWord} bats; choose your bowl.`):(onlineIsHost?`Your ${oppWord} bats; choose your bowl.`:`You bat + bowl choice when your ${oppWord} is ready.`);
+      updateUI();
+      if(!isInningsDone&&!gameOverDisplayed) startTimer();
+    }
 
     // ═══════════════════════════════════════════════════════════════
     //  RANKED MATCH — random-opponent matchmaking (PeerJS, no room code)
@@ -2437,10 +3098,17 @@
     function onlineSelectRun(runs,event){
       if(gameOverDisplayed || !onlinePeerReady) return;
       const mine=onlineIsHost?'p1':'p2'; if(onlineChoices[mine]!==null) return;
+      SFX.click();
       onlineChoices[mine]=runs; if(onlineIsHost) lastBatterChoice=isBatter1Batting?runs:lastBatterChoice; else lastBatterChoice=!isBatter1Batting?runs:lastBatterChoice;
-      document.querySelectorAll('.choice-btn').forEach(b=>b.classList.remove('selected')); event?.currentTarget?.classList.add('selected');
+      document.querySelectorAll('.choice-btn').forEach(b => {
+        b.classList.remove('selected', 'locked');
+        if (b !== event?.currentTarget) b.disabled = true;
+      });
+      if (event?.currentTarget?.classList) {
+        event.currentTarget.classList.add('selected', 'locked');
+      }
       onlineSend({type:'choice',player:mine,runs});
-      document.getElementById('actionInfo').textContent='Waiting for your friend…';
+      document.getElementById('actionInfo').textContent='Move locked! Waiting for opponent…';
       if(onlineChoices.p1!==null&&onlineChoices.p2!==null&&onlineIsHost) onlineResolveRound();
     }
     function onlineHandleMessage(data){
@@ -2534,10 +3202,43 @@
       if(typeof st.momentum==='number') momentum=st.momentum;
       if(typeof st.sixesThisGame==='number') sixesThisGame=st.sixesThisGame;
 
-      document.getElementById('batterChoice').textContent=st.bc;
-      document.getElementById('bowlerChoice').textContent=st.bw;
+      const bcEl = document.getElementById('batterChoice');
+      const bwEl = document.getElementById('bowlerChoice');
+      if (bcEl) {
+        bcEl.textContent = st.bc;
+        bcEl.classList.remove('anim-in');
+        void bcEl.offsetWidth;
+        bcEl.classList.add('anim-in');
+      }
+      if (bwEl) {
+        bwEl.textContent = st.bw;
+        bwEl.classList.remove('anim-in');
+        void bwEl.offsetWidth;
+        bwEl.classList.add('anim-in');
+      }
       document.getElementById('roundResult').textContent=st.out?'🔴 OUT!':`✅ ${st.bc} Runs!`;
       document.getElementById('roundResult').className=st.out?'round-result out':'round-result runs';
+
+      if (!st.out) {
+        const scoringCard = isBatter1Batting ? document.getElementById('player1Card') : document.getElementById('player2Card');
+        if (scoringCard) {
+          scoringCard.classList.remove('score-pop');
+          void scoringCard.offsetWidth;
+          scoringCard.classList.add('score-pop');
+        }
+        if (st.bc === 4) {
+          showCelebration('four', '🏏 FOUR! BOUNDARY!', 'Cracking shot to the fence!', 1100);
+        } else if (st.bc === 6) {
+          showCelebration('six', '💥 MAXIMUM! SIX!', 'Smashed out of the park!', 1300);
+        }
+      } else {
+        const dismissedIsP1 = isBatter1Batting;
+        const p1Name = document.getElementById('player1Name')?.textContent || 'Player 1';
+        const p2Name = document.getElementById('player2Name')?.textContent || 'Player 2';
+        const dismissedName = dismissedIsP1 ? p1Name : p2Name;
+        const subtitle = st.firstInningsComplete && st.targetScore ? `Innings Break · Target: ${st.targetScore}` : `${dismissedName} was dismissed!`;
+        showCelebration('out', '🔴 WICKET! OUT!', subtitle, 1400);
+      }
       window.isBatter1Batting = isBatter1Batting;
       window.firstInningsComplete = firstInningsComplete;
       window.targetScore = targetScore;
@@ -2611,8 +3312,13 @@
       if (gameMode==='online' || gameMode==='ranked') { if (event && event.isTrusted) platformStart(); onlineSelectRun(runs,event); return; }
       if (event && event.isTrusted && event.currentTarget) { platformStart(); }
       SFX.click();
-      document.querySelectorAll('.choice-btn').forEach(b=>b.classList.remove('selected'));
-      event.currentTarget.classList.add('selected');
+      document.querySelectorAll('.choice-btn').forEach(b => {
+        b.classList.remove('selected', 'locked');
+        if (b !== event?.currentTarget) b.disabled = true;
+      });
+      if (event?.currentTarget?.classList) {
+        event.currentTarget.classList.add('selected', 'locked');
+      }
       stopTimer();
       if (gameMode==='friend') {
         if(turnState!=='user' && turnState!=='friend2') return;
@@ -2665,17 +3371,64 @@
       const thisGen = currentMatchGeneration;
       const bc=lastBatterChoice, bw=lastBowlerChoice, isOut=bc===bw;
       addBallHistory(bc, isOut);
+
+      // Slide-in animations for number reveals
+      const bEl = document.getElementById('batterChoice');
+      const wEl = document.getElementById('bowlerChoice');
+      if (bEl) {
+        bEl.textContent = bc;
+        bEl.classList.remove('anim-in');
+        void bEl.offsetWidth;
+        bEl.classList.add('anim-in');
+      }
+      if (wEl) {
+        wEl.textContent = bw;
+        wEl.classList.remove('anim-in');
+        void wEl.offsetWidth;
+        wEl.classList.add('anim-in');
+      }
+
       if (isOut) {
         momentum=0; SFX.out();
         document.getElementById('roundResult').className='round-result out';
         document.getElementById('roundResult').textContent='🔴 OUT!';
+        const gameSc = document.getElementById('gameScreen');
+        if (gameSc) {
+          gameSc.classList.remove('shake-impact');
+          void gameSc.offsetWidth;
+          gameSc.classList.add('shake-impact');
+        }
+        showCelebration('out', '🔴 WICKET! OUT!', `${bc} = ${bw} · Batsman is OUT!`, 1500);
       } else {
         momentum++; if(bc===6)sixesThisGame++; if(momentum>=3) floatEmoji('🔥');
-        if(bc===6)SFX.six(); else SFX.runs(bc);
+        if(bc===6) {
+          SFX.six();
+          const gameSc = document.getElementById('gameScreen');
+          if (gameSc) {
+            gameSc.classList.remove('shake-subtle');
+            void gameSc.offsetWidth;
+            gameSc.classList.add('shake-subtle');
+          }
+          showCelebration('six', '💥 MAXIMUM! SIX!', 'Smashed out of the park!', 1400);
+        } else if(bc===4) {
+          SFX.four();
+          showCelebration('four', '🏏 FOUR! BOUNDARY!', 'Cracking shot to the fence!', 1200);
+        } else {
+          SFX.runs(bc);
+        }
         document.getElementById('roundResult').className='round-result runs';
         document.getElementById('roundResult').textContent=`✅ ${bc} Runs!`;
         if(isBatter1Batting) player1Score+=bc; else player2Score+=bc;
         if(isBatter1Batting && player1Score>=50) unlockAch('high_score');
+
+        // Score card pop animation
+        const activeCard = document.getElementById(isBatter1Batting ? 'player1Card' : 'player2Card');
+        if (activeCard) {
+          activeCard.classList.remove('score-pop');
+          void activeCard.offsetWidth;
+          activeCard.classList.add('score-pop');
+          setTimeout(() => { if (thisGen === currentMatchGeneration) activeCard.classList.remove('score-pop'); }, 400);
+        }
       }
       updateUI();
       if (isOut) {
@@ -2685,7 +3438,8 @@
           isBatter1Batting=!isBatter1Batting; currentBall=1; turnState='user';
           ballHistory=[]; renderBallHistory();
           document.getElementById('actionInfo').textContent=`${isBatter1Batting?currentPlayer?.username:getOpp()} chasing ${targetScore}`;
-          setTimeout(() => { if (thisGen === currentMatchGeneration) resetBall(); }, 1500);
+          showCelebration('innings', 'INNINGS BREAK', `Target: ${targetScore} runs to win`, 1800);
+          setTimeout(() => { if (thisGen === currentMatchGeneration) resetBall(); }, 2000);
         } else {
           isInningsDone=true;
           setTimeout(() => { if (thisGen === currentMatchGeneration) endGame(); }, 1500);
@@ -2706,10 +3460,17 @@
 
     function resetBall() {
       stopTimer(); lastBatterChoice=null; lastBowlerChoice=null;
-      document.getElementById('batterChoice').textContent='-';
-      document.getElementById('bowlerChoice').textContent='-';
+      const bEl = document.getElementById('batterChoice');
+      const wEl = document.getElementById('bowlerChoice');
+      if (bEl) { bEl.classList.remove('anim-in'); bEl.textContent='-'; }
+      if (wEl) { wEl.classList.remove('anim-in'); wEl.textContent='-'; }
+      const cov = document.getElementById('celebrationOverlay');
+      if (cov) cov.classList.add('hidden');
+      const gameSc = document.getElementById('gameScreen');
+      if (gameSc) gameSc.classList.remove('shake-subtle', 'shake-impact');
+      document.querySelectorAll('.score-card').forEach(c => c.classList.remove('score-pop'));
       document.getElementById('roundResult').textContent='';
-      document.querySelectorAll('.choice-btn').forEach(b=>{b.classList.remove('selected');b.disabled=false;});
+      document.querySelectorAll('.choice-btn').forEach(b=>{b.classList.remove('selected', 'locked');b.disabled=false;});
       turnState='user';
       document.getElementById('actionInfo').textContent=gameMode==='friend' ? (isBatter1Batting ? 'Player 1: choose your bat.' : `${opponentName}: choose your bat.`) : 'Your turn! Choose a run.';
       updateUI();
@@ -2768,6 +3529,10 @@
       if(gameOverDisplayed) return;
       const thisGen = currentMatchGeneration;
       gameOverDisplayed=true; stopTimer();
+      const gameSc = document.getElementById('gameScreen');
+      if (gameSc) gameSc.classList.remove('shake-subtle', 'shake-impact');
+      const gameArea = document.querySelector('.game-area');
+      if (gameArea) gameArea.classList.remove('shake-subtle', 'shake-impact');
       const opp=getOpp();
       // Both "Play With Friend" (online) and Ranked Match are real human
       // opponents, so both count for achievements. Only Ranked Match
@@ -2816,6 +3581,13 @@
           isTie=true;
         }
       }
+
+      const tb = document.getElementById('trophyBadge');
+      if (tb) {
+        if (localWon) tb.classList.remove('hidden');
+        else tb.classList.add('hidden');
+      }
+      if (!localWon) ParticleFX.clear();
 
       // Achievements
       if(localWon&&isP2P){
@@ -2914,35 +3686,7 @@
     //  CONFETTI
     // ═══════════════════════════════════════════════════════════════
     function launchConfetti() {
-      const canvas = document.getElementById('confettiCanvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-      const colors = ['#667eea','#764ba2','#f093fb','#f5576c','#38ef7d','#ffd700'];
-      const pieces = Array.from({length:140}, () => ({
-        x: Math.random()*canvas.width, y: -20-Math.random()*canvas.height*0.5,
-        w: 6+Math.random()*6, h: 8+Math.random()*8,
-        color: colors[Math.floor(Math.random()*colors.length)],
-        vy: 2+Math.random()*3, vx: -1.5+Math.random()*3,
-        rot: Math.random()*360, vr: -6+Math.random()*12,
-      }));
-      let frame = 0;
-      function draw() {
-        frame++;
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        let stillFalling = false;
-        pieces.forEach(p => {
-          p.x += p.vx; p.y += p.vy; p.rot += p.vr;
-          if (p.y < canvas.height+20) stillFalling = true;
-          ctx.save();
-          ctx.translate(p.x, p.y); ctx.rotate(p.rot*Math.PI/180);
-          ctx.fillStyle = p.color;
-          ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
-          ctx.restore();
-        });
-        if (stillFalling && frame < 260) requestAnimationFrame(draw);
-        else ctx.clearRect(0,0,canvas.width,canvas.height);
-      }
-      draw();
+      ParticleFX.confetti();
     }
 
     function showPrivacy(){
