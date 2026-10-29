@@ -156,6 +156,7 @@ class RTDBMultiplayer {
     this.roomCode = generateRoomCode();
     this.roomId = this.roomCode;
     this.currentRoundIndex = 1;
+    this.lastHandledRoundIndex = 0;
     this.matchLaunched = false;
     this.matchEndedFired = false;
     this.guestJoinedFired = false;
@@ -207,6 +208,7 @@ class RTDBMultiplayer {
     this.roomCode = cleanCode;
     this.roomId = cleanCode;
     this.currentRoundIndex = 1;
+    this.lastHandledRoundIndex = 0;
     this.matchLaunched = false;
     this.matchEndedFired = false;
     this.guestJoinedFired = false;
@@ -253,8 +255,6 @@ class RTDBMultiplayer {
 
   // Realtime synchronization listener on the room
   _listenToRoom() {
-    let lastHandledRoundIndex = 0;
-
     this.roomListener = onValue(this.roomRef, (snapshot) => {
       const data = snapshot.val();
       if (!data || !data.meta) return;
@@ -331,8 +331,8 @@ class RTDBMultiplayer {
       }
 
       // 5. Game state updates to client UI
-      if (game && game.roundIndex > lastHandledRoundIndex) {
-        lastHandledRoundIndex = game.roundIndex;
+      if (game && game.roundIndex > this.lastHandledRoundIndex) {
+        this.lastHandledRoundIndex = game.roundIndex;
         this.currentRoundIndex = game.roundIndex;
         if (this.onRoundResolved) {
           this.onRoundResolved(game, meta);
@@ -355,6 +355,112 @@ class RTDBMultiplayer {
           if (this.onReaction) this.onReaction(rx.emoji);
         }
       }
+
+      // 8. Rematch synchronization
+      if (data.rematch && this.onRematchUpdate) {
+        this.onRematchUpdate(data.rematch);
+      }
+
+      // If Host detects accepted rematch in finished state, reset room to toss
+      if (this.isHost && data.rematch?.status === 'accepted' && meta.status === 'finished') {
+        this._resetForRematch();
+        update(this.roomRef, {
+          'meta/status': 'toss',
+          'meta/updatedAt': serverTimestamp(),
+          'toss': null,
+          'game': null,
+          'rounds': null,
+          'rematch': {
+            status: 'idle',
+            hostWantsRematch: false,
+            guestWantsRematch: false,
+            requestedBy: null
+          }
+        }).catch(console.error);
+      }
+
+      // If Guest detects room returned to toss without game/rounds, reset local rematch tracking
+      if (!this.isHost && meta.status === 'toss' && (!data.game || !data.rounds)) {
+        this._resetForRematch();
+      }
+    });
+  }
+
+  _resetForRematch() {
+    this.currentRoundIndex = 1;
+    this.lastHandledRoundIndex = 0;
+    this.matchLaunched = false;
+    this.matchEndedFired = false;
+    this.localMoves = {};
+    this.tossHostSeed = null;
+    this.tossGuestSeed = null;
+    this.isResolvingRound = false;
+    if (this.onResetToss) this.onResetToss();
+  }
+
+  // Rematch methods
+  async requestRematch() {
+    if (!this.roomId) return;
+    const snap = await get(ref(rtdb, `rooms/${this.roomId}/rematch`));
+    const currentRematch = snap.val() || {};
+    const myRole = this.isHost ? 'host' : 'guest';
+    const oppRole = this.isHost ? 'guest' : 'host';
+    const oppWantsRematch = oppRole === 'host' ? !!currentRematch.hostWantsRematch : !!currentRematch.guestWantsRematch;
+
+    if (oppWantsRematch) {
+      // Both consent! Rematch is accepted immediately
+      await this.acceptRematch();
+    } else {
+      const updates = {
+        status: 'requested',
+        requestedBy: myRole,
+        updatedAt: serverTimestamp()
+      };
+      if (this.isHost) {
+        updates.hostWantsRematch = true;
+      } else {
+        updates.guestWantsRematch = true;
+      }
+      await update(ref(rtdb, `rooms/${this.roomId}/rematch`), updates);
+    }
+  }
+
+  async acceptRematch() {
+    if (!this.roomId) return;
+    if (this.isHost) {
+      await update(ref(rtdb, `rooms/${this.roomId}/rematch`), {
+        status: 'accepted',
+        hostWantsRematch: true,
+        updatedAt: serverTimestamp()
+      });
+      this._resetForRematch();
+      await update(this.roomRef, {
+        'meta/status': 'toss',
+        'meta/updatedAt': serverTimestamp(),
+        'toss': null,
+        'game': null,
+        'rounds': null,
+        'rematch': {
+          status: 'idle',
+          hostWantsRematch: false,
+          guestWantsRematch: false,
+          requestedBy: null
+        }
+      });
+    } else {
+      await update(ref(rtdb, `rooms/${this.roomId}/rematch`), {
+        status: 'accepted',
+        guestWantsRematch: true,
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
+  async declineRematch() {
+    if (!this.roomId) return;
+    await update(ref(rtdb, `rooms/${this.roomId}/rematch`), {
+      status: 'declined',
+      updatedAt: serverTimestamp()
     });
   }
 
@@ -423,13 +529,16 @@ class RTDBMultiplayer {
     // Launch match state
     const gameInit = {
       roundIndex: 1,
+      innings: 1,
+      firstBatsman: hostBatsFirst ? 'host' : 'guest',
       hostBatsFirst,
       isBatter1Batting: hostBatsFirst,
       player1Score: 0,
       player2Score: 0,
+      firstInningsScore: null,
+      targetScore: null,
       currentBall: 1,
       firstInningsComplete: false,
-      targetScore: null,
       momentum: 0,
       sixesThisGame: 0,
       lastBatterChoice: null,
@@ -530,9 +639,12 @@ class RTDBMultiplayer {
       let player2Score = prevGame.player2Score || 0;
       let momentum = prevGame.momentum || 0;
       let sixesThisGame = prevGame.sixesThisGame || 0;
-      let firstInningsComplete = prevGame.firstInningsComplete || false;
-      let targetScore = prevGame.targetScore || null;
+      let innings = prevGame.innings || (prevGame.firstInningsComplete ? 2 : 1);
+      let firstBatsman = prevGame.firstBatsman || (prevGame.hostBatsFirst ? 'host' : 'guest');
+      let firstInningsScore = prevGame.firstInningsScore !== undefined ? prevGame.firstInningsScore : null;
+      let targetScore = prevGame.targetScore !== undefined ? prevGame.targetScore : null;
       let currentBall = prevGame.currentBall || 1;
+      let firstInningsComplete = prevGame.firstInningsComplete || false;
       let gameOver = false;
       let winner = null;
       let nextBatter1Batting = isBatter1Batting;
@@ -541,43 +653,65 @@ class RTDBMultiplayer {
       history.push({ runs: bc, isOut: out });
       if (history.length > 24) history.shift();
 
-      if (out) {
-        momentum = 0;
-        if (!firstInningsComplete) {
+      if (innings === 1) {
+        if (out) {
+          momentum = 0;
           firstInningsComplete = true;
-          targetScore = isBatter1Batting ? player1Score : player2Score;
+          firstInningsScore = isBatter1Batting ? player1Score : player2Score;
+          targetScore = firstInningsScore + 1;
+          innings = 2;
           nextBatter1Batting = !isBatter1Batting;
           currentBall = 1;
+          gameOver = false;
         } else {
-          gameOver = true;
+          momentum++;
+          if (bc === 6) sixesThisGame++;
+          if (isBatter1Batting) player1Score += bc;
+          else player2Score += bc;
+          currentBall++;
+          gameOver = false;
         }
       } else {
-        momentum++;
-        if (bc === 6) sixesThisGame++;
-        if (isBatter1Batting) player1Score += bc;
-        else player2Score += bc;
-
-        if (firstInningsComplete && (isBatter1Batting ? player1Score : player2Score) > targetScore) {
+        // innings === 2: chasing target
+        if (out) {
+          momentum = 0;
           gameOver = true;
+          const finalChaserScore = isBatter1Batting ? player1Score : player2Score;
+          if (finalChaserScore > firstInningsScore) {
+            winner = isBatter1Batting ? 'host' : 'guest';
+          } else if (finalChaserScore < firstInningsScore) {
+            winner = isBatter1Batting ? 'guest' : 'host';
+          } else {
+            winner = 'tie';
+          }
         } else {
-          currentBall++;
-        }
-      }
+          momentum++;
+          if (bc === 6) sixesThisGame++;
+          if (isBatter1Batting) player1Score += bc;
+          else player2Score += bc;
 
-      if (gameOver) {
-        if (player1Score > player2Score) winner = 'host';
-        else if (player2Score > player1Score) winner = 'guest';
-        else winner = 'tie';
+          const currentChaserScore = isBatter1Batting ? player1Score : player2Score;
+          if (currentChaserScore >= targetScore) {
+            gameOver = true;
+            winner = isBatter1Batting ? 'host' : 'guest';
+          } else {
+            currentBall++;
+            gameOver = false;
+          }
+        }
       }
 
       const updatedGame = {
         roundIndex: rIdx + 1,
+        innings,
+        firstBatsman,
+        firstInningsScore,
+        targetScore,
         isBatter1Batting: nextBatter1Batting,
         player1Score,
         player2Score,
         currentBall,
         firstInningsComplete,
-        targetScore,
         momentum,
         sixesThisGame,
         lastBatterChoice: bc,
@@ -746,6 +880,10 @@ class FirebaseRTDBNetwork {
     };
 
     let lastTossStatus = null;
+    this.multiplayer.onResetToss = () => {
+      lastTossStatus = null;
+    };
+
     this.multiplayer.onTossState = (toss, meta) => {
       if (meta.status === 'playing' || meta.status === 'finished') return;
       if (toss.status === lastTossStatus) return;
@@ -789,10 +927,20 @@ class FirebaseRTDBNetwork {
         currentBall: game.currentBall,
         isBatter1Batting: game.isBatter1Batting,
         firstInningsComplete: game.firstInningsComplete,
+        innings: game.innings,
+        firstInningsScore: game.firstInningsScore,
         targetScore: game.targetScore,
         momentum: game.momentum,
         sixesThisGame: game.sixesThisGame,
-        gameOver: game.gameOver
+        gameOver: game.gameOver,
+        winner: game.winner
+      });
+    };
+
+    this.multiplayer.onRematchUpdate = (rematch) => {
+      this._emit('message', null, 'reliable', {
+        type: 'rematch',
+        rematch
       });
     };
 
@@ -867,7 +1015,25 @@ class FirebaseRTDBNetwork {
       this.multiplayer.submitRunMove(data.runs, rIdx);
     } else if (data.type === 'reaction') {
       this.multiplayer.sendReaction(data.emoji);
+    } else if (data.type === 'rematchRequest') {
+      this.multiplayer.requestRematch();
+    } else if (data.type === 'rematchAccept') {
+      this.multiplayer.acceptRematch();
+    } else if (data.type === 'rematchDecline') {
+      this.multiplayer.declineRematch();
     }
+  }
+
+  requestRematch() {
+    return this.multiplayer.requestRematch();
+  }
+
+  acceptRematch() {
+    return this.multiplayer.acceptRematch();
+  }
+
+  declineRematch() {
+    return this.multiplayer.declineRematch();
   }
 
   close() {

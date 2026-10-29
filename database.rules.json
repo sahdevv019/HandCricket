@@ -13,7 +13,7 @@
             ".validate": "newData.isString() && (!data.exists() || data.val() === newData.val() || auth.uid === data.val() || auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val())"
           },
           "status": {
-            ".validate": "newData.isString() && (newData.val() === 'waiting' || newData.val() === 'toss' || newData.val() === 'playing' || (newData.val() === 'finished' && (newData.parent().child('abandoned').val() === true || auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || root.child('rooms').child($roomId).child('game/gameOver').val() === true)) || newData.val() === 'abandoned')"
+            ".validate": "newData.isString() && (newData.val() === 'waiting' || (newData.val() === 'toss' && (!data.exists() || data.val() === 'waiting' || data.val() === 'toss' || (data.val() === 'finished' && (root.child('rooms').child($roomId).child('rematch/status').val() === 'accepted' || root.child('rooms').child($roomId).child('rematch/guestWantsRematch').val() === true || newData.parent().parent().child('rematch/status').val() === 'accepted')))) || newData.val() === 'playing' || (newData.val() === 'finished' && (newData.parent().child('abandoned').val() === true || (auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && (root.child('rooms').child($roomId).child('game/gameOver').val() === true || newData.parent().parent().child('game/gameOver').val() === true)))) || newData.val() === 'abandoned')"
           },
           "abandoned": {
             ".validate": "(newData.val() === true && ((auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && root.child('rooms').child($roomId).child('presence/guest/online').val() === false && now >= root.child('rooms').child($roomId).child('presence/guest/lastSeen').val() + 25000) || (auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && root.child('rooms').child($roomId).child('presence/host/online').val() === false && now >= root.child('rooms').child($roomId).child('presence/host/lastSeen').val() + 25000))) || newData.val() === null || !newData.exists()"
@@ -29,7 +29,7 @@
         },
         "toss": {
           "hostCommit": {
-            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && newData.isString() && newData.val().length >= 16 && (!data.exists() || data.val() === newData.val())"
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && newData.isString() && newData.val().length >= 16 && (!data.exists() || data.val() === newData.val() || root.child('rooms').child($roomId).child('meta/status').val() === 'toss')"
           },
           "guestCall": {
             ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && (newData.val() === 'heads' || newData.val() === 'tails')"
@@ -50,15 +50,30 @@
             ".validate": "newData.val() === 'bat' || newData.val() === 'bowl' || newData.val() === null"
           }
         },
+        "rematch": {
+          ".validate": "newData.hasChildren(['status'])",
+          "status": {
+            ".validate": "newData.val() === 'idle' || newData.val() === 'requested' || (newData.val() === 'accepted' && (newData.parent().child('hostWantsRematch').val() === true || root.child('rooms').child($roomId).child('rematch/hostWantsRematch').val() === true) && (newData.parent().child('guestWantsRematch').val() === true || root.child('rooms').child($roomId).child('rematch/guestWantsRematch').val() === true)) || newData.val() === 'declined'"
+          },
+          "hostWantsRematch": {
+            ".validate": "newData.isBoolean() && (newData.val() === false || auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val())"
+          },
+          "guestWantsRematch": {
+            ".validate": "newData.isBoolean() && (newData.val() === false || auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val())"
+          },
+          "requestedBy": {
+            ".validate": "newData.val() === 'host' || newData.val() === 'guest' || newData.val() === null"
+          }
+        },
         "game": {
-          ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || (root.child('rooms').child($roomId).child('meta/status').val() === 'toss' && root.child('rooms').child($roomId).child('toss/winner').val() === 'guest')",
+          ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || auth.uid === newData.parent().child('meta/hostUid').val() || (root.child('rooms').child($roomId).child('meta/status').val() === 'toss' && root.child('rooms').child($roomId).child('toss/winner').val() === 'guest')",
           "winner": {
             ".validate": "newData.val() === 'host' || newData.val() === 'guest' || newData.val() === 'tie' || newData.val() === null"
           }
         },
         "rounds": {
           "$roundIndex": {
-            ".validate": "!data.child('resolved').exists() || data.child('resolved').val() !== true || newData.val() === data.val()",
+            ".validate": "!newData.exists() || !data.child('resolved').exists() || data.child('resolved').val() !== true || newData.val() === data.val()",
             "hostCommit": {
               ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && (newData.val() === true || newData.isString()) && (!data.exists() || data.val() === newData.val())"
             },

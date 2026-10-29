@@ -486,6 +486,21 @@
         </div>
       </div>
 
+      <!-- Rematch Request Modal -->
+      <div id="rematchModalOverlay" class="avatar-modal-overlay hidden">
+        <div class="avatar-modal" style="max-width:400px;text-align:center;">
+          <div style="font-size:2.8em;margin-bottom:8px;">⚔️</div>
+          <h3 style="color:#667eea;font-size:1.3em;" id="rematchModalTitle">Rematch Request!</h3>
+          <p id="rematchModalText" style="color:var(--text-secondary);font-size:0.95em;line-height:1.5;margin:12px 0 20px;">
+            Your friend wants to play another match. Do you accept?
+          </p>
+          <div style="display:flex;gap:10px;justify-content:center;">
+            <button class="btn btn-primary" style="flex:1;padding:12px;" onclick="onlineAcceptRematch()">Accept</button>
+            <button class="btn btn-secondary" style="flex:1;padding:12px;" onclick="onlineDeclineRematch()">Decline</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 3. Leaderboard -->
       <div id="leaderboardScreen" class="panel hidden">
         <h2>🏆 Leaderboard</h2>
@@ -656,8 +671,9 @@
           <div class="rank-up hidden" id="rankUpMsg"></div>
           <div class="rank-up hidden" id="streakMsg"></div><div class="rank-up hidden" id="rewardMsg"></div>
           <div class="ach-earned-row hidden" id="achEarnedRow"></div>
-          <div style="margin-top:18px">
-            <button class="btn btn-primary" onclick="startGame(gameMode)">Play Again</button>
+          <div id="rematchStatus" class="rematch-status hidden" style="margin-top:12px;font-size:0.95em;color:#ffcc00;font-weight:600;padding:8px;background:rgba(255,204,0,0.1);border-radius:8px;"></div>
+          <div style="margin-top:18px" id="gameOverActions">
+            <button class="btn btn-primary" id="playAgainBtn" onclick="handlePlayAgain()">Play Again</button>
             <button class="btn btn-primary" onclick="backToMode()">Change Mode</button>
           </div>
         </div>
@@ -1412,7 +1428,7 @@
       if (!currentPlayer && window.currentPlayer) currentPlayer = window.currentPlayer;
       if (!currentPlayer) { showAuthScreen(); return; }
       hideScreens(['leaderboardScreen','achievementsScreen','tossScreen','statsScreen','difficultyScreen','careerScreen','shopScreen','privacyScreen','onlineLobbyScreen','friendSetupScreen','rankedLobbyScreen','gameScreen']);
-      const go=document.getElementById('gameOver'); if(go){go.classList.remove('active','hidden');}
+      const go=document.getElementById('gameOver'); if(go){go.classList.remove('active'); go.classList.add('hidden');}
       document.getElementById('modeSelection')?.classList.remove('hidden');
       resetMenuScroll();
       const rank = rankInfo(currentPlayer);
@@ -1629,6 +1645,7 @@
     let pendingMode = null, pendingRoomCode = null;
 
     function doToss(mode, roomCode) {
+      if (typeof resetMatchState === 'function') resetMatchState();
       pendingMode = mode; pendingRoomCode = roomCode; newlyEarned = [];
       document.getElementById('modeSelection').classList.add('hidden');
       document.getElementById('friendSetupScreen')?.classList.add('hidden');
@@ -1646,7 +1663,9 @@
       coin.classList.remove('flipping'); void coin.offsetWidth; coin.classList.add('flipping');
       SFX.coin();
 
+      const tossGen = currentMatchGeneration;
       setTimeout(()=>{
+        if (tossGen !== currentMatchGeneration) return;
         coin.classList.remove('flipping');
         const win = Math.random() < 0.5;
         const oppLabel = mode==='computer' ? 'Computer' : (opponentName||'Opponent');
@@ -1661,7 +1680,11 @@
           note.className = 'toss-extra'; note.style.cssText='color:#aaa;margin:8px 0;font-size:0.9em;';
           note.textContent = oppChoice==='bat' ? 'You will bowl first.' : 'You will bat first.';
           document.getElementById('tossResult').after(note);
-          setTimeout(()=>{ note.remove(); launchGame(oppChoice==='bat' ? false : true); }, 1800);
+          setTimeout(()=>{
+            if (tossGen !== currentMatchGeneration) return;
+            note.remove();
+            launchGame(oppChoice==='bat' ? false : true);
+          }, 1800);
         }
       }, 1600);
     }
@@ -1669,7 +1692,7 @@
     function chooseToss(choice) { if(gameMode==='online'||gameMode==='ranked'){ onlineTossChoice(choice); return; } SFX.click(); launchGame(choice==='bat'); }
 
     // ═══════════════════════════════════════════════════════════════
-    //  GAME STATE
+    //  GAME STATE & LIFECYCLE MANAGEMENT
     // ═══════════════════════════════════════════════════════════════
     let gameMode=null, opponentName='Opponent';
     let player1Score=0, player2Score=0, currentBall=1;
@@ -1681,11 +1704,139 @@
     let onlineNetwork=null, onlineIsHost=false, onlinePeerReady=false, onlineNetReady=false, onlineChoices={p1:null,p2:null}, onlineName='', onlineOpponentName='Friend', onlineMatchMode='online';
     const ONLINE_GAME_ID='6f4d0b6a-7f8d-4a0e-9d7d-3c0a8c2f4b11';
 
+    let currentMatchGeneration = 0;
+    let onlineMatchWinner = null;
+
+    function resetMatchState() {
+      currentMatchGeneration++;
+      stopTimer();
+
+      player1Score = 0;
+      player2Score = 0;
+      currentBall = 1;
+      isBatter1Batting = true;
+      isInningsDone = false;
+      gameOverDisplayed = false;
+      lastBatterChoice = null;
+      lastBowlerChoice = null;
+      firstInningsComplete = false;
+      targetScore = null;
+      onlineMatchWinner = null;
+      turnState = 'user';
+      momentum = 0;
+      sixesThisGame = 0;
+      ballHistory = [];
+      newlyEarned = [];
+      onlineChoices = { p1: null, p2: null };
+
+      // Hide & clear Game Over modal completely
+      const go = document.getElementById('gameOver');
+      if (go) {
+        go.classList.remove('active');
+        go.classList.add('hidden');
+      }
+      const gt = document.getElementById('gameOverTitle');
+      if (gt) gt.textContent = '';
+      const gm = document.getElementById('gameOverMessage');
+      if (gm) gm.textContent = '';
+      const ru = document.getElementById('rankUpMsg');
+      if (ru) { ru.textContent = ''; ru.classList.add('hidden'); }
+      const sm = document.getElementById('streakMsg');
+      if (sm) { sm.textContent = ''; sm.classList.add('hidden'); }
+      const rm = document.getElementById('rewardMsg');
+      if (rm) { rm.textContent = ''; rm.classList.add('hidden'); }
+      const ar = document.getElementById('achEarnedRow');
+      if (ar) { ar.innerHTML = ''; ar.classList.add('hidden'); }
+
+      // Reset Rematch elements
+      const rStatus = document.getElementById('rematchStatus');
+      if (rStatus) { rStatus.textContent = ''; rStatus.classList.add('hidden'); }
+      const rModal = document.getElementById('rematchModalOverlay');
+      if (rModal) rModal.classList.add('hidden');
+      const pAgainBtn = document.getElementById('playAgainBtn');
+      if (pAgainBtn) { pAgainBtn.disabled = false; pAgainBtn.textContent = 'Play Again'; }
+
+      // Clear HUD and result banners
+      const rr = document.getElementById('roundResult');
+      if (rr) { rr.textContent = ''; rr.className = 'round-result'; }
+      const bc = document.getElementById('batterChoice');
+      if (bc) bc.textContent = '-';
+      const bw = document.getElementById('bowlerChoice');
+      if (bw) bw.textContent = '-';
+      const ai = document.getElementById('actionInfo');
+      if (ai) ai.textContent = '';
+      const si = document.getElementById('statusInfo');
+      if (si) si.textContent = 'Ball 1';
+      const me = document.getElementById('momentumDisplay');
+      if (me) me.textContent = '🔥 Momentum x0';
+      const p1ScoreEl = document.getElementById('player1Score');
+      if (p1ScoreEl) p1ScoreEl.textContent = '0';
+      const p2ScoreEl = document.getElementById('player2Score');
+      if (p2ScoreEl) p2ScoreEl.textContent = '0';
+
+      document.querySelectorAll('.choice-btn').forEach(b => {
+        b.classList.remove('selected');
+        b.disabled = false;
+      });
+
+      renderBallHistory();
+      return currentMatchGeneration;
+    }
+
+    function handlePlayAgain() {
+      SFX.click();
+      if (gameMode === 'online') {
+        onlineRequestRematch();
+      } else {
+        startGame(gameMode);
+      }
+    }
+
+    function onlineRequestRematch() {
+      const pBtn = document.getElementById('playAgainBtn');
+      if (pBtn) { pBtn.disabled = true; pBtn.textContent = 'Waiting for Friend...'; }
+      const rStat = document.getElementById('rematchStatus');
+      if (rStat) {
+        rStat.textContent = `⏳ Waiting for ${opponentName} to accept rematch...`;
+        rStat.classList.remove('hidden');
+      }
+      if (onlineNetwork && typeof onlineNetwork.requestRematch === 'function') {
+        onlineNetwork.requestRematch();
+      } else {
+        onlineSend({ type: 'rematchRequest' });
+      }
+    }
+
+    function onlineAcceptRematch() {
+      SFX.click();
+      document.getElementById('rematchModalOverlay')?.classList.add('hidden');
+      const rStat = document.getElementById('rematchStatus');
+      if (rStat) {
+        rStat.textContent = '✅ Rematch accepted! Starting new toss...';
+        rStat.classList.remove('hidden');
+      }
+      if (onlineNetwork && typeof onlineNetwork.acceptRematch === 'function') {
+        onlineNetwork.acceptRematch();
+      } else {
+        onlineSend({ type: 'rematchAccept' });
+      }
+    }
+
+    function onlineDeclineRematch() {
+      SFX.click();
+      document.getElementById('rematchModalOverlay')?.classList.add('hidden');
+      if (onlineNetwork && typeof onlineNetwork.declineRematch === 'function') {
+        onlineNetwork.declineRematch();
+      } else {
+        onlineSend({ type: 'rematchDecline' });
+      }
+    }
+
     async function startGame(mode) {
+      resetMatchState();
       gameMode = mode; pendingMode = mode; doubleOrNothing=false;
       opponentName = mode==='computer' ? '🤖 Computer' : mode==='boss' ? '👑 The Champion' : 'Player 2';
       hideScreens(['modeSelection','leaderboardScreen','achievementsScreen','statsScreen','tossScreen','difficultyScreen','shopScreen','careerScreen','privacyScreen','onlineLobbyScreen','friendSetupScreen','rankedLobbyScreen','gameScreen']);
-      document.getElementById('gameOver')?.classList.remove('active');
       if(platformGameplayActive){ await platformStop(); }
       if(mode==='online'){ showOnlineLobby(); return; }
       if(mode==='ranked'){ showRankedPausedModal(); return; }
@@ -1738,27 +1889,20 @@
     }
 
     function launchGame(player1Bats) {
+      resetMatchState();
       document.getElementById('tossScreen').classList.add('hidden');
       document.getElementById('onlineLobbyScreen').classList.add('hidden');
       gameMode=pendingMode; isBatter1Batting=player1Bats;
-      player1Score=0; player2Score=0; currentBall=1;
-      isInningsDone=false; gameOverDisplayed=false;
-      lastBatterChoice=null; lastBowlerChoice=null;
-      firstInningsComplete=false; targetScore=null;
-      turnState='user'; ballHistory=[]; newlyEarned=[]; momentum=0; sixesThisGame=0; renderBallHistory();
 
-      document.getElementById('gameScreen').classList.remove('hidden'); document.getElementById('gameScreen').classList.add('active');
-      document.getElementById('gameOver').classList.remove('active','hidden');
+      document.getElementById('gameScreen').classList.remove('hidden');
+      document.getElementById('gameScreen').classList.add('active');
       const rb=document.getElementById('restartBtn'); if(rb) rb.classList.toggle('hidden', gameMode!=='computer');
-      document.getElementById('gameOver').classList.remove('active');
       document.getElementById('player1Name').textContent = currentPlayer?.username || 'You';
       document.getElementById('player2Name').textContent = opponentName;
       const r = rankInfo(currentPlayer);
       document.getElementById('player1RankLine').textContent = r.icon+' '+r.label;
       document.getElementById('player2RankLine').textContent = '';
-      const title = gameMode==='computer'
-        ? `${currentPlayer?.username} vs ${opponentName}`
-        : `${currentPlayer?.username} vs ${opponentName}`;
+      const title = `${currentPlayer?.username || 'You'} vs ${opponentName}`;
       document.getElementById('gameTitle').textContent = title;
       document.getElementById('reactionsBar').classList.add('hidden');
       updateUI(); resetBall();
@@ -1844,6 +1988,7 @@
     // ═══════════════════════════════════════════════════════════════
     let onlineTossStarted=false, onlineTossCallerIsHost=false, onlineTossP1='', onlineTossP2='', onlineMatchLaunched=false;
     function onlineStartToss(p1,p2,mode,callerIsHost){
+      resetMatchState();
       mode = mode||'online';
       onlineTossStarted = true;
       gameMode=mode; pendingMode=mode;
@@ -1916,19 +2061,22 @@
       onlineLaunchMatch(hostBatsFirst);
     }
     function onlineLaunchMatch(hostBatsFirst){
+      resetMatchState();
       onlineMatchLaunched = true;
       const p1=onlineTossP1, p2=onlineTossP2;
       isBatter1Batting = !!hostBatsFirst;
-      player1Score=0; player2Score=0; currentBall=1; isInningsDone=false; gameOverDisplayed=false;
-      lastBatterChoice=null; lastBowlerChoice=null; firstInningsComplete=false; targetScore=null; turnState='user'; ballHistory=[]; newlyEarned=[]; momentum=0; sixesThisGame=0; onlineChoices={p1:null,p2:null}; renderBallHistory();
       document.getElementById('authScreen')?.classList.remove('active');
       document.getElementById('modeSelection')?.classList.add('hidden');
       document.getElementById('tossScreen')?.classList.add('hidden');
       document.getElementById('onlineLobbyScreen')?.classList.add('hidden');
       document.getElementById('gameScreen').classList.remove('hidden');
       document.getElementById('gameScreen').classList.add('active');
-      document.getElementById('gameOver').classList.remove('active');
-      document.getElementById('player1Name').textContent=p1; document.getElementById('player2Name').textContent=p2; document.getElementById('gameTitle').textContent=`${p1} vs ${p2}`; document.getElementById('reactionsBar').classList.remove('hidden'); updateUI(); onlineResetBall();
+      document.getElementById('player1Name').textContent=p1;
+      document.getElementById('player2Name').textContent=p2;
+      document.getElementById('gameTitle').textContent=`${p1} vs ${p2}`;
+      document.getElementById('reactionsBar').classList.remove('hidden');
+      updateUI();
+      onlineResetBall();
     }
     function onlineResetBall(){ stopTimer(); onlineChoices={p1:null,p2:null}; lastBatterChoice=null; lastBowlerChoice=null; document.getElementById('batterChoice').textContent='-'; document.getElementById('bowlerChoice').textContent='-'; document.getElementById('roundResult').textContent=''; document.querySelectorAll('.choice-btn').forEach(b=>{b.classList.remove('selected');b.disabled=false;}); const oppWord=gameMode==='ranked'?'opponent':'friend'; document.getElementById('actionInfo').textContent=isBatter1Batting?(onlineIsHost?`You bat + bowl choice when your ${oppWord} is ready.`:`Your ${oppWord} bats; choose your bowl.`):(onlineIsHost?`Your ${oppWord} bats; choose your bowl.`:`You bat + bowl choice when your ${oppWord} is ready.`); updateUI(); if(!isInningsDone&&!gameOverDisplayed) startTimer(); }
 
@@ -2110,6 +2258,9 @@
       if(!data||typeof data!=='object')return;
       console.log('[HC net] recv ←', data);
       if(data.type==='init'){
+        document.getElementById('rematchModalOverlay')?.classList.add('hidden');
+        document.getElementById('gameOver')?.classList.add('hidden');
+        document.getElementById('gameOver')?.classList.remove('active');
         if(onlineIsHost){
           opponentName = data.p2 || 'Friend';
           onlineOpponentName = opponentName;
@@ -2118,6 +2269,42 @@
           opponentName = data.p1 || 'Friend';
           onlineStartToss(data.p1 || 'Player 1', onlineName || currentPlayer?.username || 'Player 2', data.mode || 'online', !!data.callerIsHost);
           onlineSend({type:'hello', name: onlineName || currentPlayer?.username || 'Player 2'});
+        }
+        return;
+      }
+      if(data.type==='rematch'){
+        const r = data.rematch;
+        const myRole = onlineIsHost ? 'host' : 'guest';
+        if (r && r.status === 'requested') {
+          if (r.requestedBy !== myRole) {
+            document.getElementById('rematchModalTitle').textContent = `${opponentName} wants a Rematch!`;
+            document.getElementById('rematchModalText').textContent = `${opponentName} wants to play another match in this room. Do you accept?`;
+            document.getElementById('rematchModalOverlay')?.classList.remove('hidden');
+          } else {
+            const rStat = document.getElementById('rematchStatus');
+            if (rStat) {
+              rStat.textContent = `⏳ Waiting for ${opponentName} to accept rematch...`;
+              rStat.classList.remove('hidden');
+            }
+            const pBtn = document.getElementById('playAgainBtn');
+            if (pBtn) { pBtn.disabled = true; pBtn.textContent = 'Waiting for Friend...'; }
+          }
+        } else if (r && r.status === 'declined') {
+          document.getElementById('rematchModalOverlay')?.classList.add('hidden');
+          const rStat = document.getElementById('rematchStatus');
+          if (rStat) {
+            rStat.textContent = `❌ ${opponentName} declined the rematch.`;
+            rStat.classList.remove('hidden');
+          }
+          const pBtn = document.getElementById('playAgainBtn');
+          if (pBtn) { pBtn.disabled = false; pBtn.textContent = 'Play Again'; }
+        } else if (r && r.status === 'accepted') {
+          document.getElementById('rematchModalOverlay')?.classList.add('hidden');
+          const rStat = document.getElementById('rematchStatus');
+          if (rStat) {
+            rStat.textContent = `✅ Rematch accepted! Starting new toss...`;
+            rStat.classList.remove('hidden');
+          }
         }
         return;
       }
@@ -2146,13 +2333,46 @@
       onlineSend(state); onlineApplyState(state);
     }
     function onlineApplyState(st){
-      lastBatterChoice=st.bc; lastBowlerChoice=st.bw; player1Score=st.player1Score; player2Score=st.player2Score; currentBall=st.currentBall; isBatter1Batting=st.isBatter1Batting; firstInningsComplete=st.firstInningsComplete; targetScore=st.targetScore; if(typeof st.momentum==='number') momentum=st.momentum; if(typeof st.sixesThisGame==='number') sixesThisGame=st.sixesThisGame; document.getElementById('batterChoice').textContent=st.bc; document.getElementById('bowlerChoice').textContent=st.bw; document.getElementById('roundResult').textContent=st.out?'🔴 OUT!':`✅ ${st.bc} Runs!`; document.getElementById('roundResult').className=st.out?'round-result out':'round-result runs';
+      const thisGen = currentMatchGeneration;
+      lastBatterChoice=st.bc; lastBowlerChoice=st.bw;
+      player1Score=st.player1Score; player2Score=st.player2Score;
+      currentBall=st.currentBall;
+      isBatter1Batting=st.isBatter1Batting;
+      firstInningsComplete=!!st.firstInningsComplete;
+      targetScore=st.targetScore;
+      if (st.winner) onlineMatchWinner = st.winner;
+      if(typeof st.momentum==='number') momentum=st.momentum;
+      if(typeof st.sixesThisGame==='number') sixesThisGame=st.sixesThisGame;
+
+      document.getElementById('batterChoice').textContent=st.bc;
+      document.getElementById('bowlerChoice').textContent=st.bw;
+      document.getElementById('roundResult').textContent=st.out?'🔴 OUT!':`✅ ${st.bc} Runs!`;
+      document.getElementById('roundResult').className=st.out?'round-result out':'round-result runs';
       window.isBatter1Batting = isBatter1Batting;
       window.firstInningsComplete = firstInningsComplete;
       window.targetScore = targetScore;
       updateUI();
-      if(st.out){ if(!st.firstInningsComplete){ firstInningsComplete=true; targetScore=isBatter1Batting?player1Score:player2Score; isBatter1Batting=!isBatter1Batting; currentBall=1; ballHistory=[]; renderBallHistory(); setTimeout(onlineResetBall,1200); } else { isInningsDone=true; setTimeout(()=>endGame(),1000); } }
-      else if(firstInningsComplete && (isBatter1Batting?player1Score:player2Score)>targetScore){isInningsDone=true;setTimeout(()=>endGame(),900);} else {currentBall++;setTimeout(onlineResetBall,1000);}
+
+      if (st.gameOver) {
+        isInningsDone = true;
+        setTimeout(() => {
+          if (thisGen === currentMatchGeneration) endGame(st.winner);
+        }, 1000);
+      } else if (st.out && st.firstInningsComplete) {
+        const chaserIsMe = (isBatter1Batting === onlineIsHost);
+        const chaserName = chaserIsMe ? 'You' : opponentName;
+        document.getElementById('roundResult').textContent = `🔴 OUT! Innings Break: Target is ${st.targetScore}`;
+        document.getElementById('actionInfo').textContent = `Innings 1 Over! ${chaserName} needs ${st.targetScore} runs to win.`;
+        ballHistory = [];
+        renderBallHistory();
+        setTimeout(() => {
+          if (thisGen === currentMatchGeneration) onlineResetBall();
+        }, 1600);
+      } else {
+        setTimeout(() => {
+          if (thisGen === currentMatchGeneration) onlineResetBall();
+        }, 1000);
+      }
       window.isBatter1Batting = isBatter1Batting;
       window.firstInningsComplete = firstInningsComplete;
       window.targetScore = targetScore;
@@ -2252,6 +2472,7 @@
     }
 
     function playBall() {
+      const thisGen = currentMatchGeneration;
       const bc=lastBatterChoice, bw=lastBowlerChoice, isOut=bc===bw;
       addBallHistory(bc, isOut);
       if (isOut) {
@@ -2269,18 +2490,27 @@
       updateUI();
       if (isOut) {
         if (!firstInningsComplete) {
-          firstInningsComplete=true; targetScore=isBatter1Batting?player1Score:player2Score;
+          firstInningsComplete=true;
+          targetScore=(isBatter1Batting?player1Score:player2Score) + 1;
           isBatter1Batting=!isBatter1Batting; currentBall=1; turnState='user';
           ballHistory=[]; renderBallHistory();
           document.getElementById('actionInfo').textContent=`${isBatter1Batting?currentPlayer?.username:getOpp()} chasing ${targetScore}`;
-          setTimeout(resetBall,1500);
-        } else { isInningsDone=true; setTimeout(endGame,1500); }
+          setTimeout(() => { if (thisGen === currentMatchGeneration) resetBall(); }, 1500);
+        } else {
+          isInningsDone=true;
+          setTimeout(() => { if (thisGen === currentMatchGeneration) endGame(); }, 1500);
+        }
       } else {
         if (firstInningsComplete) {
           const ch=isBatter1Batting?player1Score:player2Score;
-          if(ch>targetScore){isInningsDone=true;setTimeout(endGame,1000);return;}
+          if(ch>=targetScore){
+            isInningsDone=true;
+            setTimeout(() => { if (thisGen === currentMatchGeneration) endGame(); }, 1000);
+            return;
+          }
         }
-        currentBall++; turnState='user'; setTimeout(resetBall,1500);
+        currentBall++; turnState='user';
+        setTimeout(() => { if (thisGen === currentMatchGeneration) resetBall(); }, 1500);
       }
     }
 
@@ -2337,19 +2567,16 @@
     }
 
     async function restartMatch(){
-      if(gameMode!=='computer' || gameOverDisplayed)return;
+      if(gameMode!=='computer' || gameOverDisplayed) return;
       stopTimer(); await platformStop();
       await platformCommercialBreak();
-      document.getElementById('gameOver').classList.remove('active','hidden');
-      document.getElementById('gameScreen').classList.add('active');
-      gameOverDisplayed=false; isInningsDone=false; firstInningsComplete=false; targetScore=null;
-      pendingMode='computer'; newlyEarned=[]; momentum=0; sixesThisGame=0; ballHistory=[]; playerChoiceHistory=[];
-      doubleOrNothing=doubleOrNothing; renderBallHistory();
-      doToss('computer',null);
+      resetMatchState();
+      doToss('computer', null);
     }
 
-    async function endGame() {
+    async function endGame(onlineWinner) {
       if(gameOverDisplayed) return;
+      const thisGen = currentMatchGeneration;
       gameOverDisplayed=true; stopTimer();
       const opp=getOpp();
       // Both "Play With Friend" (online) and Ranked Match are real human
@@ -2364,20 +2591,40 @@
 
       const p1Name = isP2P ? document.getElementById('player1Name').textContent : (currentPlayer?.username||'You');
       const p2Name = isP2P ? document.getElementById('player2Name').textContent : opp;
-      if(player1Score>player2Score){
-        localWon=isP2P ? onlineIsHost : true;
-        winner=localWon ? 'You Win! 🎉' : `${p1Name} Wins! 🎉`;
-        message=`${p1Name} ${player1Score} – ${player2Score} ${p2Name}`;
-        if(localWon) { SFX.win(); launchConfetti(); } else SFX.lose();
-      } else if(player2Score>player1Score){
-        localWon=isP2P ? !onlineIsHost : false;
-        winner=localWon ? 'You Win! 🎉' : `${p2Name} Wins! 🎉`;
-        message=`${p1Name} ${player1Score} – ${player2Score} ${p2Name}`;
-        if(localWon) { SFX.win(); launchConfetti(); } else SFX.lose();
+
+      const effectiveWinner = onlineWinner || onlineMatchWinner;
+      if (isP2P && effectiveWinner) {
+        if (effectiveWinner === 'host') {
+          localWon = onlineIsHost;
+          winner = localWon ? 'You Win! 🎉' : `${p1Name} Wins! 🎉`;
+          isTie = false;
+        } else if (effectiveWinner === 'guest') {
+          localWon = !onlineIsHost;
+          winner = localWon ? 'You Win! 🎉' : `${p2Name} Wins! 🎉`;
+          isTie = false;
+        } else {
+          winner = "It's a Tie! 🤝";
+          isTie = true;
+          localWon = false;
+        }
+        message = `${p1Name} ${player1Score} – ${player2Score} ${p2Name}`;
+        if (localWon) { SFX.win(); launchConfetti(); } else if (!isTie) { SFX.lose(); }
       } else {
-        winner="It's a Tie! 🤝";
-        message=`${player1Score} – ${player2Score}`;
-        isTie=true;
+        if(player1Score>player2Score){
+          localWon=isP2P ? onlineIsHost : true;
+          winner=localWon ? 'You Win! 🎉' : `${p1Name} Wins! 🎉`;
+          message=`${p1Name} ${player1Score} – ${player2Score} ${p2Name}`;
+          if(localWon) { SFX.win(); launchConfetti(); } else SFX.lose();
+        } else if(player2Score>player1Score){
+          localWon=isP2P ? !onlineIsHost : false;
+          winner=localWon ? 'You Win! 🎉' : `${p2Name} Wins! 🎉`;
+          message=`${p1Name} ${player1Score} – ${player2Score} ${p2Name}`;
+          if(localWon) { SFX.win(); launchConfetti(); } else SFX.lose();
+        } else {
+          winner="It's a Tie! 🤝";
+          message=`${player1Score} – ${player2Score}`;
+          isTie=true;
+        }
       }
 
       // Achievements
@@ -2524,7 +2771,7 @@
       stopTimer();
       hideScreens(['privacyScreen','gameScreen','tossScreen','difficultyScreen','onlineLobbyScreen','friendSetupScreen','rankedLobbyScreen','leaderboardScreen','achievementsScreen','statsScreen','shopScreen','careerScreen']);
       document.getElementById('gameScreen')?.classList.remove('active');
-      const go=document.getElementById('gameOver'); if(go) go.classList.remove('active','hidden');
+      resetMatchState();
       showModeSelection();
     }
 
