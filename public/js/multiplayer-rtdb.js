@@ -12,7 +12,11 @@ import {
   off,
   onDisconnect,
   runTransaction,
-  serverTimestamp
+  serverTimestamp,
+  query,
+  orderByChild,
+  equalTo,
+  limitToFirst
 } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 unambiguous chars
@@ -67,6 +71,18 @@ class RTDBMultiplayer {
     this.onOpponentDisconnected = null;
     this.onOpponentReconnected = null;
     this.onMatchEnded = null;
+
+    // Matchmaking properties
+    this.matchmakingActive = false;
+    this.matchmakingQueueRef = null;
+    this.matchmakingListener = null;
+    this.matchmakingSweepTimer = null;
+    this.matchmakingStartTime = 0;
+    this.onMatchmakingStatus = null;
+    this.onMatchmakingElapsed = null;
+    this.onMatchmakingNotice = null;
+    this.onMatchFound = null;
+    this.onMatchmakingFailed = null;
   }
 
   // Ensure user is authenticated (even anonymously) before accessing RTDB
@@ -251,6 +267,394 @@ class RTDBMultiplayer {
 
     // Trigger toss setup on host side
     if (this.onGuestJoined) this.onGuestJoined(room.meta);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  CASUAL ONLINE MATCHMAKING (Realtime Database Queue)
+  // ═══════════════════════════════════════════════════════════════
+
+  async startCasualMatchmaking(playerName, playerAvatar) {
+    const user = await this.ensureAuth();
+    if (!user) throw new Error('User authentication required.');
+
+    // Cancel any previous search or active room
+    await this.cancelCasualMatchmaking();
+    if (this.roomId) {
+      await this.leaveRoom();
+    }
+
+    this.matchmakingActive = true;
+    this.matchmakingStartTime = Date.now();
+    const myUid = user.uid;
+    const cleanName = (playerName || 'Player').slice(0, 24);
+    const cleanAvatar = (playerAvatar || 'starter').slice(0, 32);
+
+    if (this.onMatchmakingStatus) this.onMatchmakingStatus('Searching for an opponent...');
+
+    // Try finding and claiming an existing waiting opponent first
+    const matched = await this._tryClaimOpponent(myUid, cleanName, cleanAvatar);
+    if (matched) return matched;
+
+    // If no candidate available, enter queue and listen
+    await this._enterMatchmakingQueue(myUid, cleanName, cleanAvatar);
+  }
+
+  async _tryClaimOpponent(myUid, myName, myAvatar) {
+    try {
+      const q = query(
+        ref(rtdb, 'matchmaking/queue'),
+        orderByChild('status'),
+        equalTo('waiting'),
+        limitToFirst(5)
+      );
+      const snap = await get(q);
+      if (!snap.exists()) return false;
+
+      const candidates = [];
+      snap.forEach(child => {
+        const val = child.val();
+        const key = child.key;
+        if (key !== myUid && val && val.status === 'waiting') {
+          const age = Date.now() - (val.joinedAt || 0);
+          if (age < 60000) {
+            candidates.push({ key, ...val });
+          }
+        }
+      });
+
+      if (candidates.length === 0) return false;
+
+      // Attempt transactional claim on available candidate
+      for (const candidate of candidates) {
+        if (!this.matchmakingActive) return false;
+        const targetRef = ref(rtdb, `matchmaking/queue/${candidate.key}`);
+        const newRoomId = 'CAS' + generateRoomCode();
+
+        let claimSuccess = false;
+        try {
+          const result = await runTransaction(targetRef, (current) => {
+            const base = current || candidate;
+            if (!base || base.status !== 'waiting' || base.uid === myUid) return;
+            return {
+              ...base,
+              status: 'matched',
+              matchedWith: myUid,
+              matchedWithName: myName,
+              matchedWithAvatar: myAvatar,
+              roomId: newRoomId
+            };
+          });
+
+          if (result.committed && result.snapshot?.val()?.status === 'matched') {
+            claimSuccess = true;
+          }
+        } catch (err) {
+          console.warn('[Matchmaking] Transaction claim error on candidate:', candidate.key, err);
+        }
+
+        if (claimSuccess) {
+          console.log(`[Matchmaking] Claimed opponent ${candidate.name} (${candidate.key})! Creating room ${newRoomId}...`);
+          this._stopMatchmakingTimers();
+          this.matchmakingActive = false;
+
+          await this._createCasualRoom(newRoomId, { uid: myUid, name: myName, avatar: myAvatar }, candidate);
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('[Matchmaking] _tryClaimOpponent error:', err);
+    }
+    return false;
+  }
+
+  async _enterMatchmakingQueue(myUid, myName, myAvatar) {
+    this.matchmakingQueueRef = ref(rtdb, `matchmaking/queue/${myUid}`);
+
+    // If an existing ticket exists for this account, inspect it
+    try {
+      const existingSnap = await get(this.matchmakingQueueRef);
+      if (existingSnap.exists()) {
+        const existingVal = existingSnap.val();
+        if (existingVal && existingVal.status === 'matched' && existingVal.roomId) {
+          console.log('[Matchmaking] Found existing match in progress:', existingVal.roomId);
+          this.matchmakingActive = false;
+          await this._joinCasualRoom(existingVal.roomId, { uid: myUid, name: myName, avatar: myAvatar }, {
+            uid: existingVal.matchedWith,
+            name: existingVal.matchedWithName || 'Opponent',
+            avatar: existingVal.matchedWithAvatar || 'starter'
+          });
+          return;
+        }
+        await remove(this.matchmakingQueueRef);
+      }
+    } catch (e) {}
+
+    const ticketData = {
+      uid: myUid,
+      name: myName,
+      avatar: myAvatar,
+      status: 'waiting',
+      joinedAt: serverTimestamp(),
+      roomId: null,
+      matchedWith: null,
+      matchedWithName: null,
+      matchedWithAvatar: null
+    };
+
+    // Guarantee onDisconnect cleanup is registered BEFORE advertising availability
+    try {
+      await onDisconnect(this.matchmakingQueueRef).remove();
+    } catch (e) {
+      console.warn('[Matchmaking] Failed to register onDisconnect handler:', e);
+    }
+
+    await set(this.matchmakingQueueRef, ticketData);
+
+    // Listen to our own ticket for match notification
+    this.matchmakingListener = onValue(this.matchmakingQueueRef, async (snap) => {
+      if (!this.matchmakingActive) return;
+      const data = snap.val();
+      if (data && data.status === 'matched' && data.roomId) {
+        console.log(`[Matchmaking] Matched by ${data.matchedWithName} (${data.matchedWith}) into room ${data.roomId}!`);
+        this._stopMatchmakingTimers();
+        this.matchmakingActive = false;
+
+        const hostInfo = {
+          uid: data.matchedWith,
+          name: data.matchedWithName || 'Opponent',
+          avatar: data.matchedWithAvatar || 'starter'
+        };
+        const rId = data.roomId;
+
+        // Cancel onDisconnect hook on queue ref now that we are matched
+        try {
+          await onDisconnect(this.matchmakingQueueRef).cancel();
+        } catch (e) {}
+
+        await this._joinCasualRoom(rId, { uid: myUid, name: myName, avatar: myAvatar }, hostInfo);
+      }
+    });
+
+    // Sweep queue periodically for new arrivals (deterministic tie-break: myUid < other.key)
+    this.matchmakingSweepTimer = setInterval(async () => {
+      if (!this.matchmakingActive) return;
+
+      const elapsed = Math.floor((Date.now() - this.matchmakingStartTime) / 1000);
+      if (this.onMatchmakingElapsed) this.onMatchmakingElapsed(elapsed);
+
+      if (elapsed >= 30 && this.onMatchmakingNotice) {
+        this.onMatchmakingNotice('No opponents currently online. You can keep searching or try again later.');
+      }
+
+      await this._sweepQueue(myUid, myName, myAvatar);
+    }, 3500);
+  }
+
+  async _sweepQueue(myUid, myName, myAvatar) {
+    if (!this.matchmakingActive) return;
+    try {
+      // If we were claimed by someone while waiting, do not sweep
+      if (this.matchmakingQueueRef) {
+        const mySnap = await get(this.matchmakingQueueRef);
+        if (mySnap.exists() && mySnap.val()?.status === 'matched') {
+          return;
+        }
+      }
+
+      const q = query(
+        ref(rtdb, 'matchmaking/queue'),
+        orderByChild('status'),
+        equalTo('waiting'),
+        limitToFirst(5)
+      );
+      const snap = await get(q);
+      if (!snap.exists() || !this.matchmakingActive) return;
+
+      let target = null;
+      snap.forEach(child => {
+        const val = child.val();
+        const key = child.key;
+        if (key !== myUid && val && val.status === 'waiting') {
+          const age = Date.now() - (val.joinedAt || 0);
+          if (age < 60000) {
+            // Tie-break: only lower UID claims to prevent simultaneous cross-claims
+            if (myUid < key) {
+              target = { key, ...val };
+            }
+          }
+        }
+      });
+
+      if (target && this.matchmakingActive) {
+        const targetRef = ref(rtdb, `matchmaking/queue/${target.key}`);
+        const newRoomId = 'CAS' + generateRoomCode();
+        let claimSuccess = false;
+        try {
+          const result = await runTransaction(targetRef, (current) => {
+            const base = current || target;
+            if (!base || base.status !== 'waiting' || base.uid === myUid) return;
+            return {
+              ...base,
+              status: 'matched',
+              matchedWith: myUid,
+              matchedWithName: myName,
+              matchedWithAvatar: myAvatar,
+              roomId: newRoomId
+            };
+          });
+          if (result.committed && result.snapshot?.val()?.status === 'matched') {
+            claimSuccess = true;
+          }
+        } catch (e) {}
+
+        if (claimSuccess) {
+          this._stopMatchmakingTimers();
+          this.matchmakingActive = false;
+          if (this.matchmakingQueueRef) {
+            try { await remove(this.matchmakingQueueRef); } catch (e) {}
+          }
+          await this._createCasualRoom(newRoomId, { uid: myUid, name: myName, avatar: myAvatar }, target);
+        }
+      }
+    } catch (err) {
+      console.warn('[Matchmaking] _sweepQueue error:', err);
+    }
+  }
+
+  async _createCasualRoom(roomId, hostUser, guestCandidate) {
+    this.isHost = true;
+    this.roomCode = roomId;
+    this.roomId = roomId;
+    this.currentRoundIndex = 1;
+    this.lastHandledRoundIndex = 0;
+    this.matchLaunched = false;
+    this.matchEndedFired = false;
+    this.guestJoinedFired = true;
+    this.localMoves = {};
+    this.tossHostSeed = null;
+    this.tossGuestSeed = null;
+    this.roomRef = ref(rtdb, `rooms/${roomId}`);
+
+    const initialData = {
+      meta: {
+        hostUid: hostUser.uid,
+        hostName: hostUser.name || 'Player 1',
+        hostAvatar: hostUser.avatar || 'starter',
+        guestUid: guestCandidate.uid,
+        guestName: guestCandidate.name || 'Player 2',
+        guestAvatar: guestCandidate.avatar || 'starter',
+        status: 'toss',
+        mode: 'casual',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      },
+      presence: {
+        host: {
+          online: true,
+          lastSeen: serverTimestamp()
+        }
+      }
+    };
+
+    await set(this.roomRef, initialData);
+    try {
+      sessionStorage.setItem('hc_active_room', roomId);
+      sessionStorage.setItem('hc_room_role', 'host');
+    } catch (e) {}
+
+    this._setupPresence('host');
+    this._listenToRoom();
+
+    if (this.onMatchFound) {
+      this.onMatchFound({
+        opponentName: guestCandidate.name || 'Opponent',
+        opponentAvatar: guestCandidate.avatar || 'starter',
+        isHost: true,
+        roomId
+      });
+    }
+  }
+
+  async _joinCasualRoom(roomId, guestUser, hostInfo) {
+    this.isHost = false;
+    this.roomCode = roomId;
+    this.roomId = roomId;
+    this.currentRoundIndex = 1;
+    this.lastHandledRoundIndex = 0;
+    this.matchLaunched = false;
+    this.matchEndedFired = false;
+    this.guestJoinedFired = true;
+    this.localMoves = {};
+    this.tossHostSeed = null;
+    this.tossGuestSeed = null;
+    this.roomRef = ref(rtdb, `rooms/${roomId}`);
+
+    let roomSnap = null;
+    for (let i = 0; i < 16; i++) {
+      roomSnap = await get(this.roomRef);
+      if (roomSnap.exists()) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (!roomSnap || !roomSnap.exists()) {
+      console.warn('[Matchmaking] Host room creation timed out:', roomId);
+      if (this.onMatchmakingFailed) this.onMatchmakingFailed('Match setup timed out. Please try searching again.');
+      return;
+    }
+
+    // Room is verified on server; clean up queue ticket
+    if (this.matchmakingQueueRef) {
+      try {
+        off(this.matchmakingQueueRef);
+        await remove(this.matchmakingQueueRef);
+      } catch (e) {}
+      this.matchmakingQueueRef = null;
+      this.matchmakingListener = null;
+    }
+
+    await set(ref(rtdb, `rooms/${roomId}/presence/guest`), {
+      online: true,
+      lastSeen: serverTimestamp()
+    });
+
+    try {
+      sessionStorage.setItem('hc_active_room', roomId);
+      sessionStorage.setItem('hc_room_role', 'guest');
+    } catch (e) {}
+
+    this._setupPresence('guest');
+    this._listenToRoom();
+
+    if (this.onMatchFound) {
+      this.onMatchFound({
+        opponentName: hostInfo.name || 'Opponent',
+        opponentAvatar: hostInfo.avatar || 'starter',
+        isHost: false,
+        roomId
+      });
+    }
+  }
+
+  async cancelCasualMatchmaking() {
+    this.matchmakingActive = false;
+    this._stopMatchmakingTimers();
+
+    if (this.matchmakingQueueRef) {
+      try {
+        off(this.matchmakingQueueRef);
+        await remove(this.matchmakingQueueRef);
+        await onDisconnect(this.matchmakingQueueRef).cancel();
+      } catch (e) {}
+      this.matchmakingQueueRef = null;
+      this.matchmakingListener = null;
+    }
+  }
+
+  _stopMatchmakingTimers() {
+    if (this.matchmakingSweepTimer) {
+      clearInterval(this.matchmakingSweepTimer);
+      this.matchmakingSweepTimer = null;
+    }
   }
 
   // Realtime synchronization listener on the room
@@ -819,6 +1223,7 @@ class RTDBMultiplayer {
 
   // Clean disconnect & leave room
   leaveRoom() {
+    this.cancelCasualMatchmaking().catch(() => {});
     try {
       sessionStorage.removeItem('hc_active_room');
       sessionStorage.removeItem('hc_room_role');
@@ -967,6 +1372,28 @@ class FirebaseRTDBNetwork {
       }
     };
 
+    // Casual matchmaking event forwards
+    this.multiplayer.onMatchmakingStatus = (status) => {
+      this._emit('matchmaking:status', status);
+    };
+
+    this.multiplayer.onMatchmakingElapsed = (seconds) => {
+      this._emit('matchmaking:elapsed', seconds);
+    };
+
+    this.multiplayer.onMatchmakingNotice = (notice) => {
+      this._emit('matchmaking:notice', notice);
+    };
+
+    this.multiplayer.onMatchFound = (info) => {
+      this.isHost = info.isHost;
+      this._emit('matchmaking:found', info);
+    };
+
+    this.multiplayer.onMatchmakingFailed = (reason) => {
+      this._emit('matchmaking:failed', reason);
+    };
+
     setTimeout(() => this._emit('ready'), 30);
   }
 
@@ -1034,6 +1461,14 @@ class FirebaseRTDBNetwork {
 
   declineRematch() {
     return this.multiplayer.declineRematch();
+  }
+
+  startCasualMatchmaking(name, avatar) {
+    return this.multiplayer.startCasualMatchmaking(name, avatar);
+  }
+
+  cancelCasualMatchmaking() {
+    return this.multiplayer.cancelCasualMatchmaking();
   }
 
   close() {

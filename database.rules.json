@@ -102,6 +102,47 @@
           }
         }
       }
+    },
+    "matchmaking": {
+      "queue": {
+        ".indexOn": ["status", "joinedAt"],
+        ".read": "auth != null && query.orderByChild === 'status' && query.equalTo === 'waiting' && query.limitToFirst <= 5",
+        "$uid": {
+          ".read": "auth != null && (auth.uid === $uid || data.child('status').val() === 'waiting' || auth.uid === data.child('matchedWith').val())",
+          ".write": "auth != null && ( (!data.exists() && auth.uid === $uid && newData.child('status').val() === 'waiting' && newData.child('uid').val() === auth.uid && !newData.child('matchedWith').exists() && !newData.child('roomId').exists()) || (!newData.exists() && ( (auth.uid === $uid && (!data.exists() || data.child('status').val() === 'waiting')) || auth.uid === data.child('matchedWith').val() || (auth.uid === $uid && data.child('status').val() === 'matched' && (root.child('rooms').child(data.child('roomId').val()).exists() || now >= data.child('joinedAt').val() + 10000)) )) || (data.exists() && data.child('status').val() === 'waiting' && (!data.child('matchedWith').exists() || data.child('matchedWith').val() === null) && (!data.child('roomId').exists() || data.child('roomId').val() === null) && newData.child('status').val() === 'matched' && auth.uid !== $uid && newData.child('matchedWith').val() === auth.uid && newData.child('uid').val() === $uid && newData.child('roomId').exists() && newData.child('roomId').val() !== null) )",
+          ".validate": "newData.hasChildren(['uid', 'name', 'status', 'joinedAt'])",
+          "uid": {
+            ".validate": "newData.val() === $uid && (!data.exists() || data.val() === newData.val())"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 30 && (!data.exists() || data.val() === newData.val())"
+          },
+          "avatar": {
+            ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())"
+          },
+          "status": {
+            ".validate": "newData.val() === 'waiting' || (newData.val() === 'matched' && data.val() === 'waiting')"
+          },
+          "joinedAt": {
+            ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())"
+          },
+          "roomId": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length >= 5 && newData.val().length <= 15)"
+          },
+          "matchedWith": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val() === auth.uid && newData.val() !== $uid)"
+          },
+          "matchedWithName": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 30)"
+          },
+          "matchedWithAvatar": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 40)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
     }
   }
 }

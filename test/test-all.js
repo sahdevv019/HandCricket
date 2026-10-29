@@ -6,6 +6,7 @@ import { runAuthAndProfileTests } from './test-auth-and-profiles.js';
 import { runMultiplayerRTDBTests } from './test-multiplayer-rtdb.js';
 import { runAuditRegressionTests } from './test-audit-regression.js';
 import { runMultiplayerInningsAndRematchTests } from './test-multiplayer-innings-rematch.js';
+import { runCasualMatchmakingTests } from './test-casual-matchmaking.js';
 
 async function main() {
   console.log('========================================================');
@@ -16,6 +17,7 @@ async function main() {
     await runAuthAndProfileTests();
     await runMultiplayerRTDBTests();
     await runMultiplayerInningsAndRematchTests();
+    await runCasualMatchmakingTests();
     await runAuditRegressionTests();
     console.log('🎉 ALL INTEGRATION & AUDIT TESTS PASSED SUCCESSFULLY! 🎉\n');
     process.exit(0);

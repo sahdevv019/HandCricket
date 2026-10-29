@@ -71,6 +71,18 @@
       .mode-btn.quick-match { background: linear-gradient(135deg,#11998e,#38ef7d); grid-column: 1/-1; padding: 20px; }
       .mode-btn:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.2); }
       .mode-btn:active { transform: translateY(-1px); }
+      .matchmaking-box { text-align: center; padding: 20px 12px; max-width: 460px; margin: 0 auto; }
+      .matchmaking-spinner { position: relative; width: 90px; height: 90px; margin: 16px auto; display: grid; place-items: center; }
+      .matchmaking-icon { font-size: 2.8em; position: relative; z-index: 2; }
+      .pulse-ring { position: absolute; width: 100%; height: 100%; border: 3px solid #38ef7d; border-radius: 50%; animation: pulseRing 1.8s ease-out infinite; opacity: 0; }
+      @keyframes pulseRing {
+        0% { transform: scale(0.6); opacity: 0.9; }
+        50% { opacity: 0.5; }
+        100% { transform: scale(1.6); opacity: 0; }
+      }
+      .player-pill { background: rgba(102,126,234,0.08); border: 2px solid var(--border-light); border-radius: 14px; padding: 12px 18px; min-width: 110px; text-align: center; }
+      .pill-avatar { font-size: 2em; margin-bottom: 2px; }
+      .pill-name { font-weight: 700; color: var(--text-primary); font-size: 1em; }
       .menu-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
       .btn-menu { padding: 9px 18px; border: 2px solid; background: transparent; border-radius: 10px; font-size: 0.88em; font-weight: 700; cursor: pointer; transition: all 0.2s; }
       .btn-menu.purple { border-color: #667eea; color: #667eea; }
@@ -435,6 +447,7 @@
         <div class="mission-card" id="dailyCard"></div>
         <div class="achievements-preview" id="achPreview"></div>
         <div class="mode-buttons">
+          <button class="mode-btn quick-match" id="findMatchBtn" onclick="startCasualMatchmaking()">⚡<br/>Find Online Match<br/><span style="font-size:0.75em;font-weight:500;opacity:0.9;">Casual 1v1 · Instant Pairing</span></button>
           <button class="mode-btn vs-comp" onclick="startGame('computer')">🤖<br/>vs Computer</button>
           <button class="mode-btn vs-friend disabled" onclick="showRankedPausedModal()">🏆<br/>Ranked Match<br/><span class="badge-paused">Temporarily Paused</span></button>
           <button class="mode-btn vs-friend" onclick="startGame('online')">🌐<br/>Play With Friend — Online</button>
@@ -525,6 +538,51 @@
         <div class="stats-summary" id="statsSummary"></div>
         <div class="history-list" id="historyList"></div>
         <div class="panel-back"><button class="btn btn-secondary" onclick="showModeSelection()">← Back</button></div>
+      </div>
+
+      <!-- Casual Online Matchmaking Screen -->
+      <div id="matchmakingScreen" class="toss-screen hidden">
+        <div class="screen-toolbar">
+          <h2>⚡ Online Matchmaking</h2>
+          <button class="btn btn-secondary btn-sm" onclick="cancelCasualMatchmaking()">← Cancel</button>
+        </div>
+
+        <div id="matchmakingSearchingState" class="matchmaking-box">
+          <div class="matchmaking-spinner">
+            <div class="pulse-ring"></div>
+            <div class="matchmaking-icon">🏏</div>
+          </div>
+          <h3 id="matchmakingTitle" style="margin:16px 0 6px;color:#667eea;font-size:1.3em;">Searching for Opponent...</h3>
+          <p id="matchmakingSubtitle" style="color:var(--text-secondary);font-size:0.95em;">Looking for a casual 1v1 match</p>
+          <div class="matchmaking-timer" style="margin:16px 0;font-size:1.3em;font-weight:700;color:#ffd166;">
+            ⏱️ <span id="matchmakingTimer">00:00</span>
+          </div>
+          <div id="matchmakingNotice" class="hidden" style="margin:12px 0;font-size:0.9em;color:#ffaa00;background:rgba(255,170,0,0.1);padding:10px 14px;border-radius:10px;">
+            No opponents currently online. You can keep searching or try again later.
+          </div>
+          <div style="margin-top:16px;">
+            <button class="btn btn-secondary" style="min-width:160px;" onclick="cancelCasualMatchmaking()">Cancel Search</button>
+          </div>
+        </div>
+
+        <div id="matchmakingFoundState" class="matchmaking-box hidden">
+          <div style="font-size:2.8em;margin-bottom:6px;">⚔️</div>
+          <h3 style="color:#38ef7d;font-size:1.4em;margin-bottom:12px;">Match Found!</h3>
+          <div class="match-found-players" style="display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0;">
+            <div class="player-pill">
+              <div class="pill-avatar" id="matchFoundP1Avatar">👤</div>
+              <div class="pill-name" id="matchFoundP1Name">You</div>
+            </div>
+            <div style="font-size:1.4em;font-weight:900;color:#ffd166;">VS</div>
+            <div class="player-pill">
+              <div class="pill-avatar" id="matchFoundP2Avatar">👤</div>
+              <div class="pill-name" id="matchFoundP2Name">Opponent</div>
+            </div>
+          </div>
+          <div style="font-size:1.05em;color:var(--text-secondary);margin-top:12px;">
+            Starting coin toss in <strong id="matchFoundCountdown" style="color:#ffd166;font-size:1.3em;">3</strong>s...
+          </div>
+        </div>
       </div>
 
       <!-- Online Multiplayer Lobby -->
@@ -1423,11 +1481,12 @@
     // ═══════════════════════════════════════════════════════════════
     //  SCREEN HELPERS
     // ═══════════════════════════════════════════════════════════════
-    function hideScreens(ids){ ids.forEach(id=>document.getElementById(id)?.classList.add('hidden')); document.getElementById('authScreen')?.classList.remove('active'); }
+    function hideScreens(ids){ ids.forEach(id=>document.getElementById(id)?.classList.add('hidden')); document.getElementById('authScreen')?.classList.remove('active'); document.getElementById('matchmakingScreen')?.classList.add('hidden'); }
     function resetMenuScroll(){ const c=document.querySelector('.container'); if(c){ c.scrollTo({top:0,left:0,behavior:'instant'}); } window.scrollTo(0,0); }
     function showModeSelection() {
       if (!currentPlayer && window.currentPlayer) currentPlayer = window.currentPlayer;
       if (!currentPlayer) { showAuthScreen(); return; }
+      try { if (typeof matchmakingActive !== 'undefined' && matchmakingActive) cancelCasualMatchmaking(); } catch(e) {}
       hideScreens(['leaderboardScreen','achievementsScreen','tossScreen','statsScreen','difficultyScreen','careerScreen','shopScreen','privacyScreen','onlineLobbyScreen','friendSetupScreen','rankedLobbyScreen','gameScreen']);
       const go=document.getElementById('gameOver'); if(go){go.classList.remove('active'); go.classList.add('hidden');}
       document.getElementById('modeSelection')?.classList.remove('hidden');
@@ -1974,6 +2033,135 @@
       if(onlineNetReady) join(); else onlineNetwork.on('ready',join);
     }
     function onlineCancel(){ try{onlineNetwork?.close();}catch(e){} onlineNetwork=null; onlineIsHost=false; onlinePeerReady=false; onlineNetReady=false; document.getElementById('onlineLobbyScreen').classList.add('hidden'); showModeSelection(); }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  CASUAL ONLINE MATCHMAKING
+    // ═══════════════════════════════════════════════════════════════
+    let matchmakingTimerInterval = null;
+    let matchmakingCountdownInterval = null;
+    let matchmakingActive = false;
+
+    async function startCasualMatchmaking() {
+      if (!currentPlayer && window.currentPlayer) currentPlayer = window.currentPlayer;
+      if (!currentPlayer) { showAuthScreen(); return; }
+      SFX.click();
+      resetMatchState();
+      gameMode = 'online';
+      pendingMode = 'online';
+      onlineMatchMode = 'casual';
+      matchmakingActive = true;
+
+      // Show matchmaking screen
+      hideScreens(['modeSelection','leaderboardScreen','achievementsScreen','statsScreen','tossScreen','difficultyScreen','shopScreen','careerScreen','privacyScreen','onlineLobbyScreen','friendSetupScreen','rankedLobbyScreen','gameScreen']);
+      document.getElementById('matchmakingScreen').classList.remove('hidden');
+      document.getElementById('matchmakingSearchingState').classList.remove('hidden');
+      document.getElementById('matchmakingFoundState').classList.add('hidden');
+      document.getElementById('matchmakingNotice').classList.add('hidden');
+      document.getElementById('matchmakingTimer').textContent = '00:00';
+      document.getElementById('matchmakingTitle').textContent = 'Searching for Opponent...';
+      document.getElementById('matchmakingSubtitle').textContent = 'Looking for a casual 1v1 match';
+
+      const startTime = Date.now();
+      if (matchmakingTimerInterval) clearInterval(matchmakingTimerInterval);
+      matchmakingTimerInterval = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+        const s = String(elapsedSec % 60).padStart(2, '0');
+        document.getElementById('matchmakingTimer').textContent = `${m}:${s}`;
+        if (elapsedSec >= 30) {
+          document.getElementById('matchmakingNotice').classList.remove('hidden');
+        }
+      }, 1000);
+
+      if (!onlineEnsureNetwork()) return;
+
+      onlineNetwork.on('matchmaking:found', (info) => {
+        handleCasualMatchFound(info);
+      });
+
+      onlineNetwork.on('matchmaking:failed', (reason) => {
+        handleCasualMatchFailed(reason);
+      });
+
+      try {
+        onlineName = onlineEscName(currentPlayer.username);
+        await onlineNetwork.startCasualMatchmaking(onlineName, currentPlayer.activeAvatar || 'starter');
+      } catch (err) {
+        console.error('Matchmaking start failed:', err);
+        handleCasualMatchFailed(err.message || 'Could not start matchmaking.');
+      }
+    }
+
+    function handleCasualMatchFound(info) {
+      if (matchmakingTimerInterval) {
+        clearInterval(matchmakingTimerInterval);
+        matchmakingTimerInterval = null;
+      }
+
+      document.getElementById('matchmakingSearchingState').classList.add('hidden');
+      document.getElementById('matchmakingFoundState').classList.remove('hidden');
+
+      onlineOpponentName = info.opponentName || 'Opponent';
+      opponentName = onlineOpponentName;
+      onlineIsHost = !!info.isHost;
+
+      const myName = currentPlayer?.username || 'You';
+      document.getElementById('matchFoundP1Name').textContent = myName;
+      document.getElementById('matchFoundP2Name').textContent = onlineOpponentName;
+
+      let countdown = 3;
+      document.getElementById('matchFoundCountdown').textContent = countdown;
+      if (matchmakingCountdownInterval) clearInterval(matchmakingCountdownInterval);
+
+      matchmakingCountdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          document.getElementById('matchFoundCountdown').textContent = countdown;
+        } else {
+          clearInterval(matchmakingCountdownInterval);
+          matchmakingCountdownInterval = null;
+          matchmakingActive = false;
+          document.getElementById('matchmakingScreen').classList.add('hidden');
+        }
+      }, 1000);
+    }
+
+    function handleCasualMatchFailed(reason) {
+      matchmakingActive = false;
+      if (matchmakingTimerInterval) { clearInterval(matchmakingTimerInterval); matchmakingTimerInterval = null; }
+      if (matchmakingCountdownInterval) { clearInterval(matchmakingCountdownInterval); matchmakingCountdownInterval = null; }
+
+      document.getElementById('matchmakingSearchingState').classList.remove('hidden');
+      document.getElementById('matchmakingFoundState').classList.add('hidden');
+      document.getElementById('matchmakingTitle').textContent = 'Match Canceled';
+      document.getElementById('matchmakingSubtitle').textContent = reason || 'Opponent disconnected before the match could start.';
+      document.getElementById('matchmakingNotice').classList.remove('hidden');
+      document.getElementById('matchmakingNotice').innerHTML = `
+        ${reason || 'Opponent disconnected before the match could start.'}<br/>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="startCasualMatchmaking()">🔍 Search Again</button>
+      `;
+    }
+
+    function cancelCasualMatchmaking() {
+      matchmakingActive = false;
+      if (matchmakingTimerInterval) { clearInterval(matchmakingTimerInterval); matchmakingTimerInterval = null; }
+      if (matchmakingCountdownInterval) { clearInterval(matchmakingCountdownInterval); matchmakingCountdownInterval = null; }
+
+      try {
+        onlineNetwork?.cancelCasualMatchmaking();
+      } catch (e) {
+        console.warn('cancelCasualMatchmaking error:', e);
+      }
+
+      document.getElementById('matchmakingScreen').classList.add('hidden');
+      showModeSelection();
+    }
+
+    window.addEventListener('beforeunload', () => {
+      try {
+        if (matchmakingActive) onlineNetwork?.cancelCasualMatchmaking();
+      } catch (e) {}
+    });
 
     // ═══════════════════════════════════════════════════════════════
     //  ONLINE/RANKED COIN TOSS — one side is randomly picked to call
