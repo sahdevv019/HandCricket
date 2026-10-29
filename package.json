@@ -1,0 +1,20 @@
+{
+  "name": "hand-crickett",
+  "version": "1.0.0",
+  "description": "This package retains the Vercel version of the original game and removes the separate Poki distribution and duplicate backup documents.",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx firebase emulators:exec --only auth,firestore,database \"node test/test-all.js\"",
+    "emulators": "npx firebase emulators:start",
+    "deploy": "npx firebase deploy --only hosting,firestore:rules,database"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "firebase": "^13.1.0",
+    "firebase-tools": "^15.34.1",
+    "puppeteer-core": "^25.16.0"
+  }
+}

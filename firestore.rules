@@ -1,0 +1,279 @@
+rules_version = '2';
+
+// ===============================================================
+// Cloud Firestore Security Rules
+// Project: Firebase Hand Cricket (Spark Tier / Serverless Client)
+// ===============================================================
+//
+// ---------------------------------------------------------------
+// SECURITY AUDIT & ARCHITECTURE NOTES
+// ---------------------------------------------------------------
+//
+// 1. Per-Write Delta Limits vs Anti-Cheat Protection:
+//    - Audit Note: Per-write delta limits (such as `wins <= resource.data.wins + 1`
+//      and `coins <= resource.data.coins + 250`) are schema bounds, NOT secure
+//      anti-cheat protection. Because repeated individually permitted updates
+//      could still accumulate stats over time, client-authoritative writes
+//      cannot be treated as cheat-proof without a trusted game server or
+//      Cloud Functions calculating match results.
+//
+// 2. Untrusted Casual Progress vs. Verified Competitive Statistics:
+//    - All client-writable stats (`wins`, `coins`, `xp`, `gamesPlayed`,
+//      `currentStreak`, `bestStreak`) are untrusted casual progress.
+//    - These fields allow players to persist casual single-player progression
+//      across devices without server computing costs, but must NOT be treated
+//      as verified competitive metrics.
+//
+// 3. Competitive Ranked Progression Lockdown:
+//    - Competitive ranked progression is completely frozen and disabled
+//      on the client side: `rankTier`, `rankStars`, and `rankGmLevel` are
+//      strictly immutable on update (`newData.rankTier == oldData.rankTier`,
+//      `newData.rankStars == oldData.rankStars`, and
+//      `newData.rankGmLevel == oldData.rankGmLevel`).
+//    - Clients cannot promote their rank tiers, grant themselves stars, or
+//      modify grandmaster prestige levels.
+//
+// 4. User Data Separation & PII Protection (No Mixed Content):
+//    - `users/{userId}`: Private user profile strictly restricted to the
+//      document owner (`allow read: if isOwner(userId);`). Contains private PII
+//      such as user email, private settings, and detailed match history.
+//    - `publicProfiles/{userId}`: Sanitized public player profile readable by
+//      any authenticated player (`allow read: if isAuthenticated();`) for
+//      leaderboards and multiplayer lobbies. Contains NO PII or sensitive tokens.
+//
+// ---------------------------------------------------------------
+// Assumed Data Model
+// ---------------------------------------------------------------
+//
+// Collection: users/{userId}
+// Document ID: Firebase Auth UID of the user.
+// Fields:
+//   - username: string (required, 2-24 chars) - Player's display name
+//   - coins: number (required, >= 0, create <= 2000, update delta <= +250 or decrease) - In-game currency balance
+//   - xp: number (required, >= 0, create <= 50000, update delta <= +250) - Experience points
+//   - wins: number (required, >= 0, create <= 500, update delta <= +1) - Number of matches won
+//   - gamesPlayed: number (required, >= 0, create <= 1000, update delta <= +1) - Total matches played
+//   - currentStreak: number (required, >= 0, update delta <= +1) - Current consecutive win streak
+//   - bestStreak: number (required, >= 0, update >= previous) - Best win streak achieved
+//   - rankTier: number (required, 0-6, create <= 6, immutable on update) - Current competitive rank tier
+//   - rankStars: number (required, >= 0, immutable on update) - Stars in the current rank tier
+//   - rankGmLevel: number (required, >= 1, immutable on update) - Grandmaster prestige level
+//   - userId: string (optional, must match {userId}, immutable) - Document owner UID
+//   - uid: string (optional, must match {userId}, immutable) - Document owner UID
+//   - achievements: list (optional, max 100 items, cannot remove on update) - Unlocked achievement IDs
+//   - ownedAvatars: list (optional, max 100 items) - Unlocked avatar IDs
+//   - matchHistory: list (optional, max 50 items) - Recent match summary entries
+//   - activeAvatar: string (optional, max 50 chars) - Selected avatar ID
+//   - cosmetics: list (optional, max 100 items) - Unlocked cosmetic IDs
+//   - activeCosmetic: string (optional, max 50 chars) - Selected cosmetic ID
+//   - dailyDate: string (optional, max 20 chars) - Date string for daily missions tracking
+//   - dailyDone: list (optional, max 50 items) - Completed daily mission IDs
+//   - doubleDate: string (optional, max 20 chars) - Date string for double coins tracking
+//   - doubleUses: number (optional, >= 0) - Daily double coin uses count
+//   - renameCount: number (optional, >= 0) - Number of times user renamed profile
+//   - cloud_migrated: bool (optional) - Migration flag from local storage
+//   - email: string or null (optional, max 254 chars) - User's private email address
+//   - updatedAt: timestamp or number (optional, > 0) - Last modification timestamp
+//   - createdAt: timestamp or number (optional, > 0, immutable) - Account creation timestamp
+//
+// Collection: publicProfiles/{userId}
+// Document ID: Firebase Auth UID of the user.
+// Fields:
+//   - userId: string (required, must match request.auth.uid and {userId}, immutable) - Player UID
+//   - username: string (required, 2-24 chars) - Public display name
+//   - rankTier: number (required, 0-6, create <= 6, immutable on update) - Competitive rank tier
+//   - rankStars: number (required, >= 0, immutable on update) - Stars in rank tier
+//   - rankGmLevel: number (required, >= 1, immutable on update) - Grandmaster prestige level
+//   - wins: number (required, >= 0, create <= 500, update delta <= +1) - Total wins for leaderboard
+//   - gamesPlayed: number (required, >= 0, create <= 1000, update delta <= +1) - Total games for leaderboard
+//   - xp: number (required, >= 0, create <= 50000, update delta <= +250) - Total XP for leaderboard
+//   - activeAvatar: string (optional, max 50 chars) - Public avatar ID
+//   - updatedAt: timestamp or number (optional, > 0) - Timestamp of last profile sync
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function isValidTimestampOrNumber(val) {
+      return val is timestamp || (val is number && val > 0);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUserRequiredFields(data) {
+      return data.username is string &&
+             data.username.size() >= 2 &&
+             data.username.size() <= 24 &&
+             data.coins is number && data.coins >= 0 &&
+             data.xp is number && data.xp >= 0 &&
+             data.wins is number && data.wins >= 0 &&
+             data.gamesPlayed is number && data.gamesPlayed >= 0 &&
+             data.currentStreak is number && data.currentStreak >= 0 &&
+             data.bestStreak is number && data.bestStreak >= 0 &&
+             (data.rankTier is int || data.rankTier is number) &&
+             data.rankTier >= 0 && data.rankTier <= 6 &&
+             data.rankStars is number && data.rankStars >= 0 &&
+             data.rankGmLevel is number && data.rankGmLevel >= 1;
+    }
+
+    function isValidUserOptionalFields(data, userId) {
+      return (!('userId' in data) || (data.userId is string && data.userId == userId)) &&
+             (!('uid' in data) || (data.uid is string && data.uid == userId)) &&
+             (!('achievements' in data) || (data.achievements is list && data.achievements.size() <= 100)) &&
+             (!('ownedAvatars' in data) || (data.ownedAvatars is list && data.ownedAvatars.size() <= 100)) &&
+             (!('matchHistory' in data) || (data.matchHistory is list && data.matchHistory.size() <= 50)) &&
+             (!('activeAvatar' in data) || (data.activeAvatar is string && data.activeAvatar.size() <= 50)) &&
+             (!('cosmetics' in data) || (data.cosmetics is list && data.cosmetics.size() <= 100)) &&
+             (!('activeCosmetic' in data) || (data.activeCosmetic is string && data.activeCosmetic.size() <= 50)) &&
+             (!('dailyDate' in data) || (data.dailyDate is string && data.dailyDate.size() <= 20)) &&
+             (!('dailyDone' in data) || (data.dailyDone is list && data.dailyDone.size() <= 50)) &&
+             (!('doubleDate' in data) || (data.doubleDate is string && data.doubleDate.size() <= 20)) &&
+             (!('doubleUses' in data) || (data.doubleUses is number && data.doubleUses >= 0)) &&
+             (!('renameCount' in data) || (data.renameCount is number && data.renameCount >= 0)) &&
+             (!('cloud_migrated' in data) || (data.cloud_migrated is bool)) &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 254)) &&
+             (!('updatedAt' in data) || isValidTimestampOrNumber(data.updatedAt)) &&
+             (!('createdAt' in data) || isValidTimestampOrNumber(data.createdAt));
+    }
+
+    function isValidUser(data, userId) {
+      let requiredFields = [
+        'username', 'coins', 'xp', 'wins', 'gamesPlayed',
+        'currentStreak', 'bestStreak', 'rankTier', 'rankStars', 'rankGmLevel'
+      ];
+      let allowedFields = [
+        'username', 'coins', 'xp', 'wins', 'gamesPlayed',
+        'currentStreak', 'bestStreak', 'rankTier', 'rankStars', 'rankGmLevel',
+        'userId', 'uid', 'achievements', 'ownedAvatars', 'matchHistory',
+        'activeAvatar', 'cosmetics', 'activeCosmetic', 'dailyDate', 'dailyDone',
+        'doubleDate', 'doubleUses', 'renameCount', 'cloud_migrated',
+        'email', 'updatedAt', 'createdAt'
+      ];
+      return hasRequiredFields(data, requiredFields) &&
+             hasOnlyAllowedFields(data, allowedFields) &&
+             isValidUserRequiredFields(data) &&
+             isValidUserOptionalFields(data, userId);
+    }
+
+    function hasValidStarterLimits(data) {
+      return data.coins <= 2000 &&
+             data.xp <= 50000 &&
+             data.wins <= 500 &&
+             data.gamesPlayed <= 1000 &&
+             data.rankTier <= 6;
+    }
+
+    function isValidUserRateLimits(newData, oldData) {
+      return (!('wins' in oldData) || newData.wins <= oldData.wins + 1) &&
+             (!('gamesPlayed' in oldData) || newData.gamesPlayed <= oldData.gamesPlayed + 1) &&
+             (!('currentStreak' in oldData) || newData.currentStreak <= oldData.currentStreak + 1) &&
+             (!('bestStreak' in oldData) || newData.bestStreak >= oldData.bestStreak) &&
+             (!('coins' in oldData) || (newData.coins <= oldData.coins + 250 || newData.coins < oldData.coins)) &&
+             (!('xp' in oldData) || newData.xp <= oldData.xp + 250) &&
+             (!('rankTier' in oldData) || newData.rankTier == oldData.rankTier) &&
+             (!('rankStars' in oldData) || newData.rankStars == oldData.rankStars) &&
+             (!('rankGmLevel' in oldData) || newData.rankGmLevel == oldData.rankGmLevel) &&
+             (!('achievements' in oldData) || ('achievements' in newData && newData.achievements.hasAll(oldData.achievements))) &&
+             (!('createdAt' in oldData) || ('createdAt' in newData && newData.createdAt == oldData.createdAt)) &&
+             (!('userId' in oldData) || ('userId' in newData && newData.userId == oldData.userId)) &&
+             (!('uid' in oldData) || ('uid' in newData && newData.uid == oldData.uid));
+    }
+
+    function isValidPublicProfile(data, userId) {
+      let requiredFields = [
+        'userId', 'username', 'rankTier', 'rankStars', 'rankGmLevel',
+        'wins', 'gamesPlayed', 'xp'
+      ];
+      let allowedFields = [
+        'userId', 'username', 'rankTier', 'rankStars', 'rankGmLevel',
+        'wins', 'gamesPlayed', 'xp', 'activeAvatar', 'updatedAt'
+      ];
+      return hasRequiredFields(data, requiredFields) &&
+             hasOnlyAllowedFields(data, allowedFields) &&
+             data.userId is string && data.userId == userId && data.userId == request.auth.uid &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 24 &&
+             (data.rankTier is int || data.rankTier is number) &&
+             data.rankTier >= 0 && data.rankTier <= 6 &&
+             data.rankStars is number && data.rankStars >= 0 &&
+             data.rankGmLevel is number && data.rankGmLevel >= 1 &&
+             data.wins is number && data.wins >= 0 &&
+             data.gamesPlayed is number && data.gamesPlayed >= 0 &&
+             data.xp is number && data.xp >= 0 &&
+             (!('activeAvatar' in data) || (data.activeAvatar is string && data.activeAvatar.size() <= 50)) &&
+             (!('updatedAt' in data) || isValidTimestampOrNumber(data.updatedAt));
+    }
+
+    function hasValidPublicProfileStarterLimits(data) {
+      return data.xp <= 50000 &&
+             data.wins <= 500 &&
+             data.gamesPlayed <= 1000 &&
+             data.rankTier <= 6;
+    }
+
+    function isValidPublicProfileRateLimits(newData, oldData) {
+      return newData.userId == oldData.userId &&
+             (!('wins' in oldData) || newData.wins <= oldData.wins + 1) &&
+             (!('gamesPlayed' in oldData) || newData.gamesPlayed <= oldData.gamesPlayed + 1) &&
+             (!('xp' in oldData) || newData.xp <= oldData.xp + 250) &&
+             (!('rankTier' in oldData) || newData.rankTier == oldData.rankTier) &&
+             (!('rankStars' in oldData) || newData.rankStars == oldData.rankStars) &&
+             (!('rankGmLevel' in oldData) || newData.rankGmLevel == oldData.rankGmLevel);
+    }
+
+    // ===============================================================
+    // Rules Definitions
+    // ===============================================================
+
+    // Private user documents: strictly accessible by the document owner
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+                       isValidUser(request.resource.data, userId) &&
+                       hasValidStarterLimits(request.resource.data);
+      allow update: if isOwner(userId) &&
+                       isValidUser(request.resource.data, userId) &&
+                       isValidUserRateLimits(request.resource.data, resource.data);
+      allow delete: if false;
+    }
+
+    // Public player profiles: readable by any authenticated player for leaderboards & multiplayer
+    match /publicProfiles/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) &&
+                       isValidPublicProfile(request.resource.data, userId) &&
+                       hasValidPublicProfileStarterLimits(request.resource.data);
+      allow update: if isOwner(userId) &&
+                       isValidPublicProfile(request.resource.data, userId) &&
+                       isValidPublicProfileRateLimits(request.resource.data, resource.data);
+      allow delete: if false;
+    }
+
+    // Default deny: any other paths or subcollections are closed by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

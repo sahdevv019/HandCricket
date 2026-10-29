@@ -1,0 +1,12 @@
+node_modules
+test
+*.log
+.firebaserc
+firebase.json
+firestore.rules
+firestore-debug.log
+database.rules.json
+database-debug.log
+package.json
+package-lock.json
+README.md

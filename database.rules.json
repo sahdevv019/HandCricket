@@ -1,0 +1,92 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null && (!data.exists() || data.child('meta/status').val() === 'waiting' || data.child('meta/hostUid').val() === auth.uid || data.child('meta/guestUid').val() === auth.uid)",
+        ".write": "auth != null && (!data.exists() && newData.child('meta/hostUid').val() === auth.uid || data.child('meta/hostUid').val() === auth.uid || data.child('meta/guestUid').val() === auth.uid || (data.child('meta/status').val() === 'waiting' && newData.child('meta/guestUid').val() === auth.uid))",
+        "meta": {
+          ".validate": "newData.hasChildren(['hostUid', 'status'])",
+          "hostUid": {
+            ".validate": "newData.isString() && (!data.exists() || data.val() === newData.val())"
+          },
+          "guestUid": {
+            ".validate": "newData.isString() && (!data.exists() || data.val() === newData.val() || auth.uid === data.val() || auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val())"
+          },
+          "status": {
+            ".validate": "newData.isString() && (newData.val() === 'waiting' || newData.val() === 'toss' || newData.val() === 'playing' || (newData.val() === 'finished' && (newData.parent().child('abandoned').val() === true || auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || root.child('rooms').child($roomId).child('game/gameOver').val() === true)) || newData.val() === 'abandoned')"
+          },
+          "abandoned": {
+            ".validate": "(newData.val() === true && ((auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && root.child('rooms').child($roomId).child('presence/guest/online').val() === false && now >= root.child('rooms').child($roomId).child('presence/guest/lastSeen').val() + 25000) || (auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && root.child('rooms').child($roomId).child('presence/host/online').val() === false && now >= root.child('rooms').child($roomId).child('presence/host/lastSeen').val() + 25000))) || newData.val() === null || !newData.exists()"
+          }
+        },
+        "presence": {
+          "host": {
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || auth.uid === newData.parent().parent().child('meta/hostUid').val()"
+          },
+          "guest": {
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() || auth.uid === newData.parent().parent().child('meta/guestUid').val()"
+          }
+        },
+        "toss": {
+          "hostCommit": {
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && newData.isString() && newData.val().length >= 16 && (!data.exists() || data.val() === newData.val())"
+          },
+          "guestCall": {
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && (newData.val() === 'heads' || newData.val() === 'tails')"
+          },
+          "guestSeed": {
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && newData.isString() && newData.val().length >= 8"
+          },
+          "hostSeed": {
+            ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && newData.isString() && newData.val().length >= 8"
+          },
+          "call": {
+            ".validate": "newData.val() === 'heads' || newData.val() === 'tails' || newData.val() === null"
+          },
+          "result": {
+            ".validate": "newData.val() === 'heads' || newData.val() === 'tails' || newData.val() === null"
+          },
+          "decision": {
+            ".validate": "newData.val() === 'bat' || newData.val() === 'bowl' || newData.val() === null"
+          }
+        },
+        "game": {
+          ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || (root.child('rooms').child($roomId).child('meta/status').val() === 'toss' && root.child('rooms').child($roomId).child('toss/winner').val() === 'guest')",
+          "winner": {
+            ".validate": "newData.val() === 'host' || newData.val() === 'guest' || newData.val() === 'tie' || newData.val() === null"
+          }
+        },
+        "rounds": {
+          "$roundIndex": {
+            ".validate": "!data.child('resolved').exists() || data.child('resolved').val() !== true || newData.val() === data.val()",
+            "hostCommit": {
+              ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && (newData.val() === true || newData.isString()) && (!data.exists() || data.val() === newData.val())"
+            },
+            "guestCommit": {
+              ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && (newData.val() === true || newData.isString()) && (!data.exists() || data.val() === newData.val())"
+            },
+            "hostSalt": {
+              ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && newData.isString() && (!data.exists() || data.val() === newData.val())"
+            },
+            "guestSalt": {
+              ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && newData.isString() && (!data.exists() || data.val() === newData.val())"
+            },
+            "hostMove": {
+              ".read": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() || data.parent().child('guestCommit').val() === true",
+              ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/hostUid').val() && newData.isNumber() && newData.val() >= 1 && newData.val() <= 6 && (!data.exists() || data.val() === newData.val())"
+            },
+            "guestMove": {
+              ".read": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() || data.parent().child('hostCommit').val() === true",
+              ".validate": "auth.uid === root.child('rooms').child($roomId).child('meta/guestUid').val() && newData.isNumber() && newData.val() >= 1 && newData.val() <= 6 && (!data.exists() || data.val() === newData.val())"
+            }
+          }
+        },
+        "reactions": {
+          "last": {
+            ".validate": "newData.hasChildren(['uid', 'emoji']) && newData.child('emoji').isString() && newData.child('emoji').val().length <= 10"
+          }
+        }
+      }
+    }
+  }
+}
