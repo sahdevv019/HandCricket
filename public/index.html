@@ -2104,6 +2104,7 @@
       onlineOpponentName = info.opponentName || 'Opponent';
       opponentName = onlineOpponentName;
       onlineIsHost = !!info.isHost;
+      onlinePeerReady = true;
 
       const myName = currentPlayer?.username || 'You';
       document.getElementById('matchFoundP1Name').textContent = myName;

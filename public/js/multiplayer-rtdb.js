@@ -1387,6 +1387,7 @@ class FirebaseRTDBNetwork {
 
     this.multiplayer.onMatchFound = (info) => {
       this.isHost = info.isHost;
+      this._emit('connected', info.isHost ? 'guest' : 'host');
       this._emit('matchmaking:found', info);
     };
 
